@@ -25,7 +25,8 @@ extension Route {
 extension View {
     /// Shows the screen's title as a menu listing where you are: every folder on the way here, and
     /// in the Connections and Tags tabs the other servers, folders and tags. On iPhone it's a
-    /// Liquid Glass pill in the middle of the navigation bar; on iPad, the bar's title dropdown.
+    /// Liquid Glass pill on the leading side of the navigation bar (centered in
+    /// landscape); on iPad, the bar's title dropdown.
     ///
     /// - Parameters:
     ///   - screenID: the screen's `Route.screenID`, or `nil` for a tab's root screen.
@@ -61,6 +62,7 @@ private struct LocationTitle: ViewModifier {
     @Environment(TagStore.self) private var tags
     @Environment(\.browserTab) private var tab
     @Environment(\.usesSidebarLayout) private var usesSidebarLayout
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @State private var titleSlotWidth: CGFloat?
 
     func body(content: Content) -> some View {
@@ -75,12 +77,18 @@ private struct LocationTitle: ViewModifier {
         } else {
             base.toolbar {
                 ToolbarItem(placement: .principal) {
-                    Menu {
-                        menuContent
-                    } label: {
-                        CappedWidth(maxWidth: titleSlotWidth) { pill }
+                    TitleSlot(slotWidth: titleSlotWidth, isCentered: isLandscape) {
+                        Menu {
+                            menuContent
+                        } label: {
+                            if isLandscape {
+                                CappedWidth(maxWidth: titleSlotWidth) { pill }
+                            } else {
+                                pill
+                            }
+                        }
+                        .accessibilityIdentifier("titleMenu")
                     }
-                    .accessibilityIdentifier("titleMenu")
                     .background(TitleSlotWidthReader { titleSlotWidth = $0 })
                 }
             }
@@ -88,6 +96,9 @@ private struct LocationTitle: ViewModifier {
     }
 
     // MARK: Pill
+
+    /// On a landscape iPhone the bar has room to center the pill, and to make it wider.
+    private var isLandscape: Bool { verticalSizeClass == .compact }
 
     private var pill: some View {
         let current = crumbs.last
@@ -107,7 +118,7 @@ private struct LocationTitle: ViewModifier {
         .foregroundStyle(.primary)
         .padding(.horizontal, 14)
         .frame(height: 36)
-        .frame(maxWidth: 260)
+        .frame(maxWidth: isLandscape ? 400 : min(260, titleSlotWidth ?? 260))
         .modifier(PillBackground())
         .contentShape(Capsule())
     }
@@ -415,6 +426,32 @@ private struct CappedWidth: Layout {
         let width = min(bounds.width, maxWidth ?? .infinity)
         content.place(at: CGPoint(x: bounds.midX, y: bounds.midY), anchor: .center,
                       proposal: ProposedViewSize(width: width, height: bounds.height))
+    }
+}
+
+/// Pins the title to the leading edge of the navigation bar's title slot, as the bar does on its own
+/// with a title too wide to center. It asks for more width than any bar has, so the bar always
+/// falls back to that and fits the slot between its buttons (and grows it back, e.g. after rotating).
+/// Centered, it asks for the title's own width and the bar centers it.
+private struct TitleSlot: Layout {
+    let slotWidth: CGFloat?
+    let isCentered: Bool
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let size = subviews.first?.sizeThatFits(.unspecified) ?? .zero
+        return isCentered ? size : CGSize(width: proposal.width ?? 10_000, height: size.height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard let content = subviews.first else { return }
+        if isCentered {
+            content.place(at: CGPoint(x: bounds.midX, y: bounds.midY), anchor: .center, proposal: .unspecified)
+            return
+        }
+        // SwiftUI also lays this out at its full width, centered on the slot.
+        let slot = min(bounds.width, slotWidth ?? bounds.width)
+        content.place(at: CGPoint(x: bounds.midX - slot / 2, y: bounds.midY), anchor: .leading,
+                      proposal: .unspecified)
     }
 }
 
