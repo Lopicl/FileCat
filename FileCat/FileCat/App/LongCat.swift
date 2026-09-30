@@ -1,79 +1,82 @@
 import AVFoundation
 import SwiftUI
 
-/// The cat at the very end of Settings. Its body goes on past the bottom of the screen, however
-/// far you pull. Pull hard enough and it meows.
+/// The cat at the very end of Settings, seen from above: a head with ears, eyes, a nose and
+/// whiskers on a body that goes on past the bottom of the screen, however far you pull. Pull hard
+/// enough and it meows. Traced from a 680×680 SVG, whose coordinates the drawing keeps.
 struct LongCat: View {
     /// Times it has meowed; also its accessibility value, for UI tests.
     var meows = 0
 
-    private let headWidth: CGFloat = 132
+    /// Points per unit of the SVG's 680-unit view box.
+    private let scale: CGFloat = 0.8
 
     var body: some View {
-        VStack(spacing: 0) {
-            CatHead()
-                .frame(width: headWidth, height: 118)
+        CatFace()
+            .frame(width: CatFace.box.width * scale, height: CatFace.box.height * scale)
             // The body, drawn much longer than the space it takes, so the end is never in sight
-            // (not even while the list rubber-bands past its bottom).
-            Rectangle()
-                .frame(width: 58, height: 120)
-                .overlay(alignment: .top) {
-                    CatLegs()
-                        .frame(width: 94, height: 70)
-                        .offset(y: -6)
-                }
-                .overlay(alignment: .top) {
-                    Rectangle()
-                        .frame(width: 58, height: 4000)
-                        .offset(y: 118)
-                }
-        }
-        .foregroundStyle(Color.primary)
-        .frame(maxWidth: .infinity)
-        .padding(.top, 40)
-        .accessibilityElement()
-        .accessibilityLabel("A very long cat")
-        .accessibilityValue("\(meows)")
-        .accessibilityIdentifier("longCat")
+            // (not even while the list rubber-bands past its bottom). It starts under the face so
+            // the two overlap without a seam.
+            .background(alignment: .top) {
+                Rectangle()
+                    .frame(width: CatFace.bodyWidth * scale, height: 4000)
+                    .offset(y: (CatFace.bodyJoin - CatFace.box.minY) * scale)
+            }
+            .foregroundStyle(Self.gray)
+            .frame(maxWidth: .infinity)
+            .padding(.top, 40)
+            .accessibilityElement()
+            .accessibilityLabel("A very long cat")
+            .accessibilityValue("\(meows)")
+            .accessibilityIdentifier("longCat")
     }
+
+    /// Dark gray in light mode, light gray in dark mode.
+    private static let gray = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark ? .lightGray : .darkGray
+    })
 }
 
-/// A wide, soft head with pointed ears and two narrow eyes, in the style of the app icon's cat.
-private struct CatHead: View {
+/// The top of the cat, in the SVG's coordinates: ears, the rounded top of the body, whiskers, and
+/// the eyes and nose cut out of it. The layout frame ends a little below the whiskers.
+private struct CatFace: View {
+    /// The part of the view box drawn here.
+    static let box = CGRect(x: 266, y: 26, width: 148, height: 100)
+    static let bodyWidth: CGFloat = 80
+    /// Where the separately drawn rest of the body begins.
+    static let bodyJoin: CGFloat = 116
+
     var body: some View {
         Canvas { context, size in
-            let w = size.width, h = size.height
-            context.fill(Path(ellipseIn: CGRect(x: 0, y: h * 0.28, width: w, height: h * 0.72)), with: .foreground)
-            for side: CGFloat in [-1, 1] {
-                let cx = w / 2
-                var ear = Path()
-                ear.move(to: CGPoint(x: cx + side * w * 0.40, y: h * 0.50))
-                ear.addLine(to: CGPoint(x: cx + side * w * 0.43, y: h * 0.05))
-                ear.addLine(to: CGPoint(x: cx + side * w * 0.10, y: h * 0.34))
-                ear.closeSubpath()
-                // Fill plus a round-joined stroke softens the tips, like the app icon's ears.
-                context.fill(ear, with: .foreground)
-                context.stroke(ear, with: .foreground, style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
-            }
+            context.scaleBy(x: size.width / Self.box.width, y: size.height / Self.box.height)
+            context.translateBy(x: -Self.box.minX, y: -Self.box.minY)
 
-            // Eyes: calm slits, cut out of the head.
-            context.blendMode = .destinationOut
-            for side: CGFloat in [-1, 1] {
-                let eye = CGRect(x: w / 2 + side * w * 0.2 - w * 0.07, y: h * 0.58, width: w * 0.14, height: h * 0.07)
-                context.fill(Path(ellipseIn: eye), with: .color(.black))
+            context.fill(Path(roundedRect: CGRect(x: 300, y: 52, width: 80, height: 200), cornerRadius: 40), with: .foreground)
+            for ear: [(CGFloat, CGFloat)] in [[(306, 72), (296, 28), (334, 55)], [(374, 72), (384, 28), (346, 55)]] {
+                context.fill(Self.polygon(ear), with: .foreground)
             }
+            var whiskers = Path()
+            for (from, to) in [((300, 100), (268, 92)), ((300, 108), (268, 112)),
+                               ((380, 100), (412, 92)), ((380, 108), (412, 112))] {
+                whiskers.move(to: CGPoint(x: from.0, y: from.1))
+                whiskers.addLine(to: CGPoint(x: to.0, y: to.1))
+            }
+            context.stroke(whiskers, with: .foreground, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+
+            // Eyes and nose, cut out of the head.
+            context.blendMode = .destinationOut
+            for x in [325.0, 355.0] {
+                context.fill(Path(ellipseIn: CGRect(x: x - 7, y: 79, width: 14, height: 18)), with: .color(.black))
+            }
+            context.fill(Self.polygon([(335, 102), (345, 102), (340, 108)]), with: .color(.black))
         }
         .compositingGroup()
     }
-}
 
-/// Front legs hanging down on either side of the body, like a cat being held up.
-private struct CatLegs: View {
-    var body: some View {
-        HStack {
-            Capsule().frame(width: 20, height: 70)
-            Spacer()
-            Capsule().frame(width: 20, height: 70)
+    private static func polygon(_ points: [(CGFloat, CGFloat)]) -> Path {
+        Path { path in
+            path.addLines(points.map { CGPoint(x: $0.0, y: $0.1) })
+            path.closeSubpath()
         }
     }
 }
