@@ -30,6 +30,8 @@ struct SettingsView: View {
 
     @Environment(AudioPlayer.self) private var player
     @Environment(TransferCenter.self) private var transfers
+    @Environment(Router.self) private var router
+    private var activities: ActivityCenter { .shared }
 
     @State private var cacheSize: Int64?
     @State private var offlineSize: Int64?
@@ -81,6 +83,24 @@ struct SettingsView: View {
                 Text("Photos & Videos")
             } footer: {
                 Text("Applies to videos shown in the photo and video gallery. Unmuting a video pauses the music player.")
+            }
+
+            Section {
+                // Opens the same list as the floating activity button, which only shows once
+                // something has run.
+                Button {
+                    router.showsActivities = true
+                } label: {
+                    LabeledContent {
+                        Text(activitySummary)
+                    } label: {
+                        Label("Activity", systemImage: "clock.arrow.circlepath")
+                            .foregroundStyle(Color.primary)
+                    }
+                }
+                .accessibilityIdentifier("settingsActivity")
+            } footer: {
+                Text("Copies, moves, downloads, uploads and extractions, running and recent.")
             }
 
             Section {
@@ -162,6 +182,13 @@ struct SettingsView: View {
         async let cache = AppCache.size()
         async let offline = AppCache.directorySize(RemoteCache.offlineRoot)
         (cacheSize, offlineSize) = await (cache, offline)
+    }
+
+    /// "2 in Progress", "3 Recent" or "None".
+    private var activitySummary: String {
+        let running = activities.runningCount
+        if running > 0 { return "\(running) in Progress" }
+        return activities.activities.isEmpty ? "None" : "\(activities.activities.count) Recent"
     }
 
     private func formatted(_ size: Int64?) -> String {

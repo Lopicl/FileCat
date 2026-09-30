@@ -722,6 +722,17 @@ final class FileCatUITests: XCTestCase {
         XCTAssertFalse(app.tabBars.buttons["Activity"].exists, "Activity isn't a tab on iPhone")
     }
 
+    func testSettingsOpensActivityList() {
+        openTab("settings")
+        let row = app.buttons["settingsActivity"]
+        XCTAssertTrue(row.waitForExistence(timeout: 3))
+        XCTAssertTrue(row.label.contains("None"), "Nothing has run yet: \(row.label)")
+        row.tap()
+        XCTAssertTrue(app.staticTexts["No Activity"].waitForExistence(timeout: 3), "The activity list opens even when empty")
+        app.buttons["Done"].firstMatch.tap()
+        XCTAssertTrue(waitForDisappearance(app.staticTexts["No Activity"]))
+    }
+
     func testRunningActivityCanBeCancelled() {
         app.terminate()
         app.launchArguments = ["-FileCatUITestReset", "YES", "-FileCatDemoActivity", "30"]
