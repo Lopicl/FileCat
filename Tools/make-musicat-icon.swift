@@ -36,10 +36,6 @@ for radius: CGFloat in [318, 290, 262, 234] {
         .copy(strokingWithWidth: 5, lineCap: .round, lineJoin: .round, miterLimit: 1)
     cutout(ring, alpha: 0.35)
 }
-// The label: a ring around the hole.
-let label = CGPath(ellipseIn: CGRect(x: cx - 176, y: cy - 176, width: 352, height: 352), transform: nil)
-    .copy(strokingWithWidth: 10, lineCap: .round, lineJoin: .round, miterLimit: 1)
-cutout(label, alpha: 0.55)
 
 // The hole: FileCat's cat head, the same proportions a little smaller, centred on the record.
 let headY = cy - 26
