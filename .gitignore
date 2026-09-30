@@ -9,5 +9,8 @@ build/
 # MusiCat is its own repository
 /MusiCat/
 
+# AltStore source (github.com/Lopicl/AltStore-Repo) is its own repository
+/AltStore-Repo/
+
 # Scratch media for analysis
 /Analyze/
