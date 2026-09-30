@@ -1,3 +1,4 @@
+import CryptoKit
 import FileCatKit
 import Foundation
 import Observation
@@ -45,9 +46,13 @@ struct RemoteItem: Hashable, Identifiable, Sendable {
 ///   low, and Settings → Clear Cache empties it.
 /// - `Application Support/Offline/<source>/<path>` holds files the user chose to keep offline.
 ///   They stay until the user removes them, and are refreshed when they change on the server.
+/// - `Caches/Streams/<source>/` holds the parts of videos and songs played from a server
+///   (`PartialFile`), so they aren't fetched twice. A file that streamed in completely moves to
+///   `Caches/Remote`.
 enum RemoteCache {
     static let cacheRoot = URL.cachesDirectory.appending(path: "Remote", directoryHint: .isDirectory)
     static let offlineRoot = URL.applicationSupportDirectory.appending(path: "Offline", directoryHint: .isDirectory)
+    static let streamRoot = URL.cachesDirectory.appending(path: "Streams", directoryHint: .isDirectory)
 
     private static var fileManager: FileManager { .default }
 
@@ -63,6 +68,19 @@ enum RemoteCache {
         RemotePath.components(of: path).reduce(root.appending(path: sourceID, directoryHint: .isDirectory)) {
             $0.appending(path: $1)
         }
+    }
+
+    /// Where the streamed parts of `item` go. The name comes from the path, size and date, so a
+    /// file that changed on the server starts afresh.
+    static func streamURL(for item: RemoteItem) -> URL {
+        let key = "\(item.path)\n\(item.size ?? -1)\n\(item.modified?.timeIntervalSince1970 ?? 0)"
+        let name = SHA256.hash(data: Data(key.utf8)).prefix(16).map { String(format: "%02x", $0) }.joined()
+        return streamRoot.appending(path: item.sourceID, directoryHint: .isDirectory).appending(path: name)
+    }
+
+    static func removeStream(at url: URL) {
+        try? fileManager.removeItem(at: url)
+        try? fileManager.removeItem(at: url.appendingPathExtension("chunks"))
     }
 
     /// The offline copy if there is one, otherwise the cache location.
@@ -126,11 +144,13 @@ enum RemoteCache {
     static func removeLocalCopies(of item: RemoteItem) {
         try? fileManager.removeItem(at: cacheURL(sourceID: item.sourceID, path: item.path))
         try? fileManager.removeItem(at: offlineURL(sourceID: item.sourceID, path: item.path))
+        removeStream(at: streamURL(for: item))
     }
 
     static func removeAll(for sourceID: String) {
         try? fileManager.removeItem(at: cacheRoot.appending(path: sourceID))
         try? fileManager.removeItem(at: offlineRoot.appending(path: sourceID))
+        try? fileManager.removeItem(at: streamRoot.appending(path: sourceID))
     }
 
     static func temporaryURL(for name: String) -> URL {
@@ -165,6 +185,8 @@ final class TransferCenter {
     @ObservationIgnored private let sources: SourceStore
     @ObservationIgnored private var running: [String: Task<URL, Error>] = [:]
     @ObservationIgnored private var activeDownloads: [String: ActiveDownload] = [:]
+    /// Streamed parts in use, by path, so everything playing the same file shares them.
+    @ObservationIgnored private var partialFiles: [String: WeakPartialFile] = [:]
     private static let pinsKey = "offlinePins"
 
     init(sources: SourceStore) {
@@ -262,22 +284,49 @@ final class TransferCenter {
 
     // MARK: Streaming
 
-    /// Something to play `item` from while it downloads, or `nil` when it's already on the device
-    /// (or its size isn't known, which streaming needs). Starts the download if needed.
+    /// Something to play `item` from the server, or `nil` when it's already on the device (or its
+    /// size isn't known, which streaming needs). Only the parts that get played are fetched; they're
+    /// kept in the cache, and a file that streamed in completely counts as downloaded.
     func stream(for item: RemoteItem) async throws -> RemoteStream? {
         guard let size = item.size, size > 0, RemoteCache.availableURL(for: item) == nil else { return nil }
         let fileSystem = try await fileSystem(for: item.sourceID)
         guard RemoteCache.availableURL(for: item) == nil else { return nil }
-        _ = startDownload(item)
-        return RemoteStream(path: item.path, name: item.name, size: size, fileSystem: fileSystem, download: activeDownloads[item.id])
+        return RemoteStream(
+            path: item.path, name: item.name, size: size, fileSystem: fileSystem,
+            download: activeDownloads[item.id], partial: partialFile(for: item, size: size), readAhead: 4
+        )
     }
 
-    /// An asset that plays `item` while it downloads. Releasing it cancels the download if it
-    /// hasn't finished, so leaving a long video doesn't keep fetching it.
+    /// An asset that plays `item` from the server.
     func streamingAsset(for item: RemoteItem) async throws -> StreamingAsset? {
         guard let stream = try await stream(for: item) else { return nil }
-        return StreamingAsset(stream: stream) { [weak self] in
-            self?.cancelDownload(of: item)
+        return StreamingAsset(stream: stream)
+    }
+
+    private func partialFile(for item: RemoteItem, size: Int64) -> PartialFile? {
+        let url = RemoteCache.streamURL(for: item)
+        if let file = partialFiles[url.path]?.file { return file }
+        let file = PartialFile(url: url, size: size) { [weak self] url in
+            Task { @MainActor in self?.didFinishStreaming(item, at: url) }
+        }
+        partialFiles = partialFiles.filter { $0.value.file != nil }
+        partialFiles[url.path] = WeakPartialFile(file: file)
+        return file
+    }
+
+    /// Every part of `item` has streamed in: keep it as an ordinary cached copy.
+    private func didFinishStreaming(_ item: RemoteItem, at url: URL) {
+        partialFiles[url.path] = nil
+        // Players still reading it keep their open file, so it can go right away.
+        defer { RemoteCache.removeStream(at: url) }
+        guard RemoteCache.availableURL(for: item) == nil else { return }
+        let copy = RemoteCache.temporaryURL(for: item.name)
+        do {
+            try FileManager.default.copyItem(at: url, to: copy)
+            _ = try RemoteCache.store(copy, for: item, offline: isPinned(item))
+            revision += 1
+        } catch {
+            try? FileManager.default.removeItem(at: copy)
         }
     }
 
@@ -515,6 +564,10 @@ final class TransferCenter {
     private func savePins() {
         UserDefaults.standard.set(pins.mapValues(Array.init), forKey: Self.pinsKey)
     }
+}
+
+private struct WeakPartialFile {
+    weak var file: PartialFile?
 }
 
 /// Forwards byte counts from a network callback to the main actor, at most every 1%.

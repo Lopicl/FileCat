@@ -16,7 +16,7 @@ enum UITestSupport {
         for key in ["savedLocations", "fileTags", SourceStore.defaultsKey, "offlinePins"] + AppSettings.resettable {
             UserDefaults.standard.removeObject(forKey: key)
         }
-        for folder in [RemoteCache.cacheRoot, RemoteCache.offlineRoot] {
+        for folder in [RemoteCache.cacheRoot, RemoteCache.offlineRoot, RemoteCache.streamRoot] {
             try? fileManager.removeItem(at: folder)
         }
 

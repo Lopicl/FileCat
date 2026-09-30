@@ -44,7 +44,7 @@ final class GalleryVideoController {
         if url != nil { Self.loadedCount -= 1 }
     }
 
-    /// Plays the video at `url`, or from `streaming` (a server video that's still downloading),
+    /// Plays the video at `url`, or from `streaming` (a server video played from the server),
     /// in which case `url` just identifies the video.
     func load(_ url: URL, streaming: StreamingAsset? = nil, autoplay: Bool = true) {
         guard url.standardizedFileURL != self.url?.standardizedFileURL else {

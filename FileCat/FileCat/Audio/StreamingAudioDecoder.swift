@@ -2,8 +2,8 @@ import AudioToolbox
 import AVFoundation
 
 /// Decodes a song from a `RemoteStream` into PCM buffers for the audio engine, so music on a
-/// server plays while it downloads. Audio Toolbox reads the file through callbacks, which block
-/// until the bytes are there. Use it from one serial queue only; every call can block.
+/// server plays without downloading it first. Audio Toolbox reads the file through callbacks,
+/// which block until the bytes are there. Use it from one serial queue only; every call can block.
 final class StreamingAudioDecoder: @unchecked Sendable {
     let stream: RemoteStream
     private(set) var processingFormat: AVAudioFormat

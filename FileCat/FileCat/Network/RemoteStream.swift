@@ -69,9 +69,90 @@ final class ActiveDownload: @unchecked Sendable {
     }
 }
 
-/// Serves any part of a server file while it downloads: from the download when it's already
-/// there, by waiting a moment when it's about to arrive, or straight from the server for parts
-/// far ahead (after seeking).
+/// The parts of a server file that have been streamed so far, kept on the device so they're
+/// fetched only once. The data sits at its place in a sparse file; a second file next to it
+/// (`<name>.chunks`) has one byte per `RemoteStream.chunkSize` chunk, set once that chunk arrived.
+final class PartialFile: @unchecked Sendable {
+    let url: URL
+    private let size: Int64
+    private let dataDescriptor: Int32
+    private let mapDescriptor: Int32
+    /// Called once, from any thread, when every chunk has arrived.
+    private let onComplete: @Sendable (URL) -> Void
+
+    private let lock = NSLock()
+    private var arrived: [UInt8]
+    private var missing: Int
+
+    init?(url: URL, size: Int64, onComplete: @escaping @Sendable (URL) -> Void) {
+        let count = Int((size + RemoteStream.chunkSize - 1) / RemoteStream.chunkSize)
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let path = url.path(percentEncoded: false)
+        let dataDescriptor = open(path, O_RDWR | O_CREAT, 0o644)
+        let mapDescriptor = open(path + ".chunks", O_RDWR | O_CREAT, 0o644)
+        guard dataDescriptor >= 0, mapDescriptor >= 0, ftruncate(dataDescriptor, off_t(size)) == 0 else {
+            if dataDescriptor >= 0 { close(dataDescriptor) }
+            if mapDescriptor >= 0 { close(mapDescriptor) }
+            return nil
+        }
+        var arrived = [UInt8](repeating: 0, count: count)
+        let read = arrived.withUnsafeMutableBytes { pread(mapDescriptor, $0.baseAddress, count, 0) }
+        if read != count {
+            // New, or left by a different version of the file: start empty.
+            arrived = [UInt8](repeating: 0, count: count)
+            ftruncate(mapDescriptor, 0)
+            ftruncate(mapDescriptor, off_t(count))
+        }
+        self.url = url
+        self.size = size
+        self.dataDescriptor = dataDescriptor
+        self.mapDescriptor = mapDescriptor
+        self.onComplete = onComplete
+        self.arrived = arrived
+        missing = arrived.count(where: { $0 == 0 })
+    }
+
+    deinit {
+        close(dataDescriptor)
+        close(mapDescriptor)
+    }
+
+    private func length(of index: Int64) -> Int {
+        Int(min(RemoteStream.chunkSize, size - index * RemoteStream.chunkSize))
+    }
+
+    func contains(_ index: Int64) -> Bool {
+        lock.withLock { index >= 0 && Int(index) < arrived.count && arrived[Int(index)] != 0 }
+    }
+
+    /// The chunk, if it has arrived.
+    func read(_ index: Int64) -> Data? {
+        guard contains(index) else { return nil }
+        let length = length(of: index)
+        var data = Data(count: length)
+        let count = data.withUnsafeMutableBytes { pread(dataDescriptor, $0.baseAddress, length, off_t(index * RemoteStream.chunkSize)) }
+        return count == length ? data : nil
+    }
+
+    func write(_ data: Data, at index: Int64) {
+        guard index >= 0, Int(index) < arrived.count, data.count == length(of: index), !contains(index) else { return }
+        let written = data.withUnsafeBytes { pwrite(dataDescriptor, $0.baseAddress, data.count, off_t(index * RemoteStream.chunkSize)) }
+        guard written == data.count else { return }
+        var flag: UInt8 = 1
+        guard pwrite(mapDescriptor, &flag, 1, off_t(index)) == 1 else { return }
+        let isComplete = lock.withLock {
+            guard arrived[Int(index)] == 0 else { return false }
+            arrived[Int(index)] = 1
+            missing -= 1
+            return missing == 0
+        }
+        if isComplete { onComplete(url) }
+    }
+}
+
+/// Serves any part of a server file: from a download when one is running and has got there
+/// (waiting a moment when it's about to arrive), otherwise straight from the server, a chunk at a
+/// time. With a `PartialFile`, fetched chunks are kept on the device; without, a few stay in memory.
 final class RemoteStream: @unchecked Sendable {
     /// The file's path on the server, and its name (which tells players its type).
     let path: String
@@ -79,10 +160,13 @@ final class RemoteStream: @unchecked Sendable {
     let size: Int64
     private let fileSystem: any RemoteFileSystem
     private let download: ActiveDownload?
+    private let partial: PartialFile?
+    /// How many chunks past the one just read to fetch in advance, so playback doesn't wait on
+    /// a round trip for every chunk.
+    private let readAhead: Int
 
-    /// Server reads are fetched in chunks this size and a few are kept, because players ask for
-    /// many small pieces.
-    private static let chunkSize: Int64 = 512 * 1024
+    /// Server reads are fetched in chunks this size, because players ask for many small pieces.
+    static let chunkSize: Int64 = 512 * 1024
     private static let cachedChunks = 12
     /// How far ahead of the download a read may be and still wait for it rather than going to the server.
     private static let waitWindow: Int64 = 3 * 1024 * 1024
@@ -90,13 +174,19 @@ final class RemoteStream: @unchecked Sendable {
     private let lock = NSLock()
     private var chunks: [Int64: Data] = [:]
     private var chunkOrder: [Int64] = []
+    private var fetching: [Int64: Task<Data, Error>] = [:]
 
-    init(path: String, name: String, size: Int64, fileSystem: any RemoteFileSystem, download: ActiveDownload?) {
+    init(
+        path: String, name: String, size: Int64, fileSystem: any RemoteFileSystem, download: ActiveDownload?,
+        partial: PartialFile? = nil, readAhead: Int = 0
+    ) {
         self.path = path
         self.name = name
         self.size = size
         self.fileSystem = fileSystem
         self.download = download
+        self.partial = partial
+        self.readAhead = readAhead
     }
 
     var contentType: String {
@@ -153,9 +243,45 @@ final class RemoteStream: @unchecked Sendable {
     }
 
     private func chunk(_ index: Int64) async throws -> Data {
-        if let cached = lock.withLock({ chunks[index] }) { return cached }
-        let offset = index * Self.chunkSize
-        let data = try await fileSystem.read(path, offset: offset, length: Int(min(Self.chunkSize, size - offset)))
+        let stored = partial?.read(index) ?? lock.withLock { chunks[index] }
+        let current = stored == nil ? fetch(index) : nil
+        // A running download fetches ahead already.
+        if download?.isRunning != true {
+            let last = (size - 1) / Self.chunkSize
+            for next in stride(from: index + 1, through: min(last, index + Int64(readAhead)), by: 1) where !has(next) {
+                _ = fetch(next)
+            }
+        }
+        if let current { return try await current.value }
+        return stored ?? Data()
+    }
+
+    private func has(_ index: Int64) -> Bool {
+        partial?.contains(index) ?? lock.withLock { chunks[index] != nil }
+    }
+
+    /// Fetches a chunk from the server, or joins the fetch that's already running. Fetches aren't
+    /// cancelled with the read that started them: the chunk is worth keeping either way.
+    private func fetch(_ index: Int64) -> Task<Data, Error> {
+        lock.withLock {
+            if let task = fetching[index] { return task }
+            let task = Task {
+                defer { lock.withLock { fetching[index] = nil } }
+                let offset = index * Self.chunkSize
+                let data = try await fileSystem.read(path, offset: offset, length: Int(min(Self.chunkSize, size - offset)))
+                keep(data, at: index)
+                return data
+            }
+            fetching[index] = task
+            return task
+        }
+    }
+
+    private func keep(_ data: Data, at index: Int64) {
+        if let partial {
+            partial.write(data, at: index)
+            return
+        }
         lock.withLock {
             chunks[index] = data
             chunkOrder.removeAll { $0 == index }
@@ -164,7 +290,6 @@ final class RemoteStream: @unchecked Sendable {
                 chunks[chunkOrder.removeFirst()] = nil
             }
         }
-        return data
     }
 }
 
@@ -174,11 +299,9 @@ final class StreamingAsset {
     let asset: AVURLAsset
     let stream: RemoteStream
     private let loader: StreamingAssetLoader
-    private let onRelease: () -> Void
 
-    init(stream: RemoteStream, onRelease: @escaping () -> Void = {}) {
+    init(stream: RemoteStream) {
         self.stream = stream
-        self.onRelease = onRelease
         loader = StreamingAssetLoader(stream: stream)
         var components = URLComponents()
         components.scheme = "filecat-stream"
@@ -188,10 +311,9 @@ final class StreamingAsset {
         asset.resourceLoader.setDelegate(loader, queue: loader.queue)
     }
 
-    /// Call when playback moves on; stops the download if nobody needs it anymore.
+    /// Call when playback moves on, so reads the player still had waiting stop.
     func release() {
         loader.cancelAll()
-        onRelease()
     }
 }
 

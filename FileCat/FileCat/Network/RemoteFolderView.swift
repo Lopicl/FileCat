@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Pushed to open a server file: downloads it (with progress) and then shows the usual viewer.
+/// Pushed to open a server file in `RemoteFileViewer`.
 /// `gallery` holds the folder's other photos and videos so the viewer can swipe through them.
 struct RemoteFile: Hashable {
     let item: RemoteItem
@@ -8,7 +8,7 @@ struct RemoteFile: Hashable {
 }
 
 /// Browses a folder on a server. Files show whether they're only on the server, downloaded, or
-/// kept offline; opening one downloads it first.
+/// kept offline.
 struct RemoteFolderView: View {
     let folder: RemoteItem
 
@@ -454,7 +454,8 @@ struct RemoteStatusBadge: View {
     }
 }
 
-/// Downloads a server file, then shows it in the matching viewer.
+/// Shows a server file in the matching viewer. Photos and videos open right away (videos stream);
+/// other files wait until the user downloads them. Leaving doesn't stop a download.
 struct RemoteFileViewer: View {
     let file: RemoteFile
 
@@ -462,6 +463,11 @@ struct RemoteFileViewer: View {
     @AppStorage(AppSettings.streamsMedia) private var streamsMedia = true
     @State private var local: FileItem?
     @State private var error: Error?
+    @State private var isCancelling = false
+
+    private var isMedia: Bool {
+        file.item.kind == .image || file.item.kind == .video
+    }
 
     var body: some View {
         Group {
@@ -486,33 +492,61 @@ struct RemoteFileViewer: View {
                     .buttonStyle(.bordered)
                 }
             } else {
-                VStack(spacing: 16) {
-                    ThumbnailView(item: file.item.fileItem, side: 96)
-                    Text(file.item.name)
-                        .font(.headline)
-                        .multilineTextAlignment(.center)
-                    if case .downloading(let fraction) = transfers.status(of: file.item) {
-                        ProgressView(value: fraction)
-                            .frame(maxWidth: 240)
-                        if let size = file.item.size {
-                            Text("\(ByteCountFormatter.string(fromByteCount: Int64(Double(size) * fraction), countStyle: .file)) of \(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                                .monospacedDigit()
-                        }
-                    } else {
-                        ProgressView()
-                    }
-                }
-                .padding()
-                .navigationTitle(file.item.name)
-                .navigationBarTitleDisplayMode(.inline)
+                placeholder
             }
         }
-        .task { await download() }
-        .onDisappear {
-            if local == nil { transfers.cancelDownload(of: file.item) }
+        .task {
+            if isMedia || RemoteCache.availableURL(for: file.item) != nil {
+                await download()
+            } else if case .downloading = transfers.status(of: file.item) {
+                // Started earlier (the user left and came back): show it once it's done.
+                await download()
+            }
         }
+    }
+
+    private var placeholder: some View {
+        VStack(spacing: 16) {
+            ThumbnailView(item: file.item.fileItem, side: 96)
+            Text(file.item.name)
+                .font(.headline)
+                .multilineTextAlignment(.center)
+            if case .downloading(let fraction) = transfers.status(of: file.item) {
+                ProgressView(value: fraction)
+                    .frame(maxWidth: 240)
+                if let size = file.item.size {
+                    Text("\(ByteCountFormatter.string(fromByteCount: Int64(Double(size) * fraction), countStyle: .file)) of \(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+                if !isMedia {
+                    Button("Cancel Download", role: .cancel) {
+                        isCancelling = true
+                        transfers.cancelDownload(of: file.item)
+                    }
+                    .accessibilityIdentifier("cancelDownload")
+                }
+            } else if isMedia {
+                ProgressView()
+            } else {
+                if let size = file.item.size {
+                    Text(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                Button {
+                    Task { await download() }
+                } label: {
+                    Label("Download", systemImage: "arrow.down.circle")
+                }
+                .buttonStyle(.borderedProminent)
+                .accessibilityIdentifier("downloadFile")
+            }
+        }
+        .padding()
+        .navigationTitle(file.item.name)
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     private var galleryItems: [FileItem] {
@@ -539,11 +573,12 @@ struct RemoteFileViewer: View {
 
     private func download() async {
         guard local == nil else { return }
-        // Videos play while they download; the gallery streams them.
+        // Videos play from the server; the gallery streams them.
         if resolver.canStream(file.item.fileItem.url) {
             local = file.item.fileItem
             return
         }
+        isCancelling = false
         do {
             let url = try await transfers.localCopy(of: file.item)
             var item = file.item.fileItem
@@ -554,8 +589,9 @@ struct RemoteFileViewer: View {
             local = item
         } catch is CancellationError {
         } catch {
-            self.error = error
+            if !isCancelling { self.error = error }
         }
+        isCancelling = false
     }
 }
 

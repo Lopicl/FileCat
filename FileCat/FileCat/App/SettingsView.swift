@@ -11,7 +11,7 @@ enum AppSettings {
     static let galleryStartsMuted = "galleryStartsMuted"
     /// Tags as a whole: the Tags tab, tag menus and tag dots.
     static let tagsEnabled = "tagsEnabled"
-    /// Play server videos and music while they download, instead of waiting for the whole file.
+    /// Play server videos and music straight from the server, instead of downloading the whole file first.
     static let streamsMedia = "streamsMedia"
 
     static let all = [showsFileTags, galleryAutoplay, galleryStartsMuted, tagsEnabled, streamsMedia]
@@ -71,7 +71,7 @@ struct SettingsView: View {
             } header: {
                 Text("Servers")
             } footer: {
-                Text("Videos and music on servers start playing right away while they download, instead of after the whole file has arrived.")
+                Text("Videos and music on servers start playing right away, and only the parts you play are fetched. Otherwise the whole file downloads first.")
             }
 
             Section {

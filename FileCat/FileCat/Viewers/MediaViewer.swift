@@ -93,7 +93,7 @@ struct MediaViewer: View {
             if let currentItem, currentItem.kind == .video {
                 let url = currentItem.url
                 Task {
-                    // Server videos stream while they download (or download first, if streaming is
+                    // Server videos stream (or download first, if streaming is
                     // off); local ones resolve to themselves right away.
                     if resolver.canStream(url) {
                         let streaming = await resolver.stream(url)

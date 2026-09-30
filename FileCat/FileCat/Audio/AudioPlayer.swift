@@ -117,7 +117,7 @@ final class AudioPlayer {
     // MARK: Controls
 
     /// Plays `item`, then the rest of `queue`. `resolve` downloads tracks that aren't local yet;
-    /// `stream`, if given, plays them while they download.
+    /// `stream`, if given, plays them straight from the server.
     func play(
         _ item: FileItem,
         in queue: [FileItem],
@@ -280,7 +280,7 @@ final class AudioPlayer {
             let streamer = streamer
             resolveTask = Task { [weak self] in
                 do {
-                    // Play while it downloads when possible; otherwise wait for the whole file.
+                    // Stream it when possible; otherwise wait for the whole file.
                     if let streamer, let stream = try? await streamer(item),
                        let decoder = await self?.openDecoder(for: stream) {
                         guard let self, self.loadGeneration == generation else { return }

@@ -24,11 +24,20 @@ final class NetworkUITests: XCTestCase {
         addServer("WebDAV", host: "http://127.0.0.1:8081/", user: "test", password: "secret")
         openServer("127.0.0.1")
 
-        // Opening a file downloads it, then shows it.
+        // Opening a file offers to download it; once downloaded, it shows.
         XCTAssertTrue(app.staticTexts["hello.txt"].waitForExistence(timeout: 10))
         app.staticTexts["hello.txt"].tap()
+        let download = app.buttons["downloadFile"]
+        XCTAssertTrue(download.waitForExistence(timeout: 10), "Opening a server file doesn't download it by itself")
+        XCTAssertFalse(app.textViews.firstMatch.exists)
+        download.tap()
         XCTAssertTrue(app.textViews.firstMatch.waitForExistence(timeout: 10))
         XCTAssertEqual(app.textViews.firstMatch.value as? String, "hello over the network\n")
+        goBack()
+
+        // Now it's on the device, so it opens right away.
+        app.staticTexts["hello.txt"].tap()
+        XCTAssertTrue(app.textViews.firstMatch.waitForExistence(timeout: 10))
         goBack()
 
         // New folder, rename, delete.
@@ -148,7 +157,7 @@ final class NetworkUITests: XCTestCase {
         XCTAssertTrue(app.buttons["nowPlayingPlayPause"].waitForExistence(timeout: 15), "Music from the server plays")
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label ENDSWITH ' of 3'")).firstMatch.waitForExistence(timeout: 5), "The folder's other songs are queued")
         let playing = app.staticTexts.matching(NSPredicate(format: "label MATCHES '^0:0[1-9]$'")).firstMatch
-        XCTAssertTrue(playing.waitForExistence(timeout: 15), "The song plays (streamed while it downloads)")
+        XCTAssertTrue(playing.waitForExistence(timeout: 15), "The song plays (streamed)")
     }
 
     /// MusiCat asks for FileCat's servers, FileCat asks the user, and MusiCat then plays music
@@ -256,7 +265,7 @@ final class NetworkUITests: XCTestCase {
     }
 
     /// Needs a movie at /tmp/filecat-test-server/Videos/clip.mp4.
-    func testWebDAVStreamsVideoWhileDownloading() throws {
+    func testWebDAVStreamsVideo() throws {
         try requireServer(port: 8081)
         guard FileManager.default.fileExists(atPath: "/tmp/filecat-test-server/Videos/clip.mp4") else {
             throw XCTSkip("Put a movie at /tmp/filecat-test-server/Videos/clip.mp4 to test streaming.")
@@ -269,7 +278,7 @@ final class NetworkUITests: XCTestCase {
         app.staticTexts["clip.mp4"].tap()
         XCTAssertTrue(app.buttons["videoPlayPause"].waitForExistence(timeout: 10), "The gallery opens straight away")
         let playing = app.staticTexts.matching(NSPredicate(format: "label MATCHES '^0:0[1-9]$'")).firstMatch
-        XCTAssertTrue(playing.waitForExistence(timeout: 20), "The video plays while it downloads")
+        XCTAssertTrue(playing.waitForExistence(timeout: 20), "The video plays from the server")
     }
 
     // MARK: Helpers
