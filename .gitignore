@@ -1,0 +1,13 @@
+.DS_Store
+xcuserdata/
+*.xcuserstate
+DerivedData/
+build/
+.build/
+.swiftpm/
+
+# MusiCat is its own repository
+/MusiCat/
+
+# Scratch media for analysis
+/Analyze/
