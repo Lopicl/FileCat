@@ -1,3 +1,4 @@
+import FileCatKit
 import SwiftUI
 
 /// Opens the server editor, either for a new server (optionally pre-filled from a nearby one) or
@@ -8,8 +9,8 @@ struct ServerEditorRequest: Identifiable {
     var isNew: Bool
 }
 
-/// The Connections tab: the servers and folders you added, and servers found nearby. Everything
-/// is added from the + menu.
+/// The Connections tab: the servers and folders you added, drives that were just plugged in, and
+/// servers found nearby. Everything else is added from the + menu.
 struct NetworkView: View {
     @Environment(SourceStore.self) private var sources
     @Environment(LocationStore.self) private var locations
@@ -39,7 +40,13 @@ struct NetworkView: View {
     }
 
     private var isEmpty: Bool {
-        sources.sources.isEmpty && locations.locations.isEmpty && locations.disconnected.isEmpty
+        sources.sources.isEmpty && locations.locations.isEmpty && locations.disconnected.isEmpty && locations.newDrives.isEmpty
+    }
+
+    /// Companion apps (MusiCat) that follow a folder or server and lose it with it.
+    private func companions(using id: String) -> String? {
+        let apps = CompanionUsage.apps(using: id, in: FileService.documentsDirectory)
+        return apps.isEmpty ? nil : ListFormatter.localizedString(byJoining: apps)
     }
 
     var body: some View {
@@ -52,6 +59,18 @@ struct NetworkView: View {
                         Text("Tap + to connect to an SMB, NFS, WebDAV or Nextcloud server, or to add a folder from the Files app.")
                     }
                     .listRowBackground(Color.clear)
+                }
+            }
+
+            if !locations.newDrives.isEmpty {
+                Section {
+                    ForEach(locations.newDrives, id: \.self) { name in
+                        newDriveRow(name)
+                    }
+                } header: {
+                    Text("Plugged In")
+                } footer: {
+                    Text("iOS lets FileCat into a drive once you choose it in the Files picker. After that, it shows up here whenever it's plugged in.")
                 }
             }
 
@@ -107,7 +126,7 @@ struct NetworkView: View {
                     Text("Folders")
                 } footer: {
                     if !locations.disconnected.isEmpty {
-                        Text("Drives that aren't plugged in reconnect by themselves when you plug them in again.")
+                        Text("Folders that can't be reached reconnect by themselves once they're available again. Drives show up while they're plugged in.")
                     }
                 }
             }
@@ -146,10 +165,11 @@ struct NetworkView: View {
         }
         .onDisappear { discovery.stop() }
         .task {
-            // Drives plugged in while the tab is open show up without a pull to refresh.
+            // Drives plugged in while the tab is open show up without a pull to refresh, also on
+            // devices where iOS doesn't report drives being plugged in.
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(3))
-                if !locations.disconnected.isEmpty { locations.reconnect() }
+                if locations.hasUnreachable { locations.reconnect() }
             }
         }
         .alert(
@@ -165,11 +185,20 @@ struct NetworkView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: { removal in
+            let companions = companions(using: removal.id)
             switch removal {
             case .source:
-                Text("Its offline files are deleted from this device. Nothing is deleted on the server.")
+                if let companions {
+                    Text("It's also removed from \(companions), with the songs downloaded from it. Offline files are deleted from this device. Nothing is deleted on the server.")
+                } else {
+                    Text("Its offline files are deleted from this device. Nothing is deleted on the server.")
+                }
             case .location:
-                Text("The folder itself isn't deleted.")
+                if let companions {
+                    Text("It's also removed from \(companions). The folder itself isn't deleted.")
+                } else {
+                    Text("The folder itself isn't deleted.")
+                }
             }
         }
     }
@@ -218,6 +247,23 @@ struct NetworkView: View {
         .swipeActions {
             Button("Remove", systemImage: "minus.circle") { pendingRemoval = .location(id: location.id, name: location.name) }
                 .tint(.red)
+        }
+    }
+
+    /// A drive that was just plugged in: Add opens the Files picker to choose it.
+    private func newDriveRow(_ name: String) -> some View {
+        LabeledContent {
+            Button("Add") { router.requestImport(.location) }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("addNewDrive")
+        } label: {
+            LabeledRow(title: name, subtitle: "New drive", systemImage: "externaldrive.badge.plus")
+        }
+        .swipeActions {
+            Button("Ignore", systemImage: "eye.slash") { locations.dismissNewDrive(name) }
+        }
+        .contextMenu {
+            Button("Ignore", systemImage: "eye.slash") { locations.dismissNewDrive(name) }
         }
     }
 

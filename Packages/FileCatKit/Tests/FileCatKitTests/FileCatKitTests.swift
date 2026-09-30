@@ -107,4 +107,30 @@ final class FileCatKitTests: XCTestCase {
         let written = try String(contentsOf: LibraryManifest.url(in: root), encoding: .utf8)
         XCTAssertFalse(written.contains("p@ss"))
     }
+
+    func testSharedFoldersAndCompanionUsage() throws {
+        // FileCat's bookmark of a folder opens it for the companion app too.
+        let music = root.appending(path: "Music")
+        var manifest = LibraryManifest(tags: [])
+        manifest.locations = [
+            SharedLocation(id: "L1", name: "Music", kind: .drive, bookmark: try music.bookmarkData(), isConnected: true),
+            SharedLocation(name: "Old", kind: .folder),
+        ]
+        try manifest.write(to: root)
+        let read = try XCTUnwrap(LibraryManifest.read(from: root)?.locations)
+        XCTAssertEqual(read.first?.id, "L1")
+        let resolved = try XCTUnwrap(read.first?.resolveBookmark())
+        XCTAssertEqual(resolved.url.standardizedFileURL.resolvingSymlinksInPath(), music.standardizedFileURL.resolvingSymlinksInPath())
+        XCTAssertTrue(resolved.isReadable)
+        XCTAssertNil(read.last?.resolveBookmark(), "Manifests from older FileCat builds have no bookmarks")
+
+        XCTAssertEqual(CompanionUsage.readAll(from: root), [])
+        try CompanionUsage(app: "MusiCat", locationIDs: ["L1"], serverIDs: ["S1"]).write(to: root)
+        try CompanionUsage(app: "VidCat", serverIDs: ["S1"]).write(to: root)
+        XCTAssertEqual(CompanionUsage.apps(using: "S1", in: root), ["MusiCat", "VidCat"])
+        XCTAssertEqual(CompanionUsage.apps(using: "L1", in: root), ["MusiCat"])
+        XCTAssertEqual(CompanionUsage.apps(using: "L2", in: root), [])
+        try CompanionUsage(app: "MusiCat").write(to: root)
+        XCTAssertEqual(CompanionUsage.apps(using: "L1", in: root), [])
+    }
 }

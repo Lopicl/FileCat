@@ -50,6 +50,18 @@ enum UITestSupport {
         writeTestVideo(to: root.appending(path: "clip.mp4"), seconds: 4)
     }
 
+    /// For testing folders from Files: launch with `-FileCatUITestLocation Tunes` to add a folder
+    /// named Tunes, holding "Drive Song.wav", as if it was picked in the Files picker.
+    @MainActor
+    static func addTestLocationIfNeeded(to store: LocationStore) {
+        guard let name = UserDefaults.standard.string(forKey: "FileCatUITestLocation") else { return }
+        let folder = URL.temporaryDirectory.appending(path: "UITestLocations").appending(path: name)
+        try? FileManager.default.removeItem(at: folder)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try? toneWAV(seconds: 5).write(to: folder.appending(path: "Drive Song.wav"))
+        _ = try? store.add(folder)
+    }
+
     /// For testing the activity indicator and Live Activity: launch with
     /// `-FileCatDemoActivity <seconds>` to run a fake copy that takes that long.
     @MainActor

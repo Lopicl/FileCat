@@ -11,8 +11,9 @@ public struct LibraryManifest: Codable, Hashable, Sendable {
     public var libraryID: UUID
     /// Every tag defined in FileCat, with its color and icon. Files carry only names and colors.
     public var tags: [FileTag]
-    /// The folders and servers added in FileCat's Connections tab. Only names: access to folders
-    /// belongs to FileCat, so a companion app asks the user to pick the same folders once.
+    /// The folders and servers added in FileCat's Connections tab. Folders come with FileCat's
+    /// bookmark, which a companion app can try to open; if iOS refuses, it asks the user to pick
+    /// the same folder once.
     public var locations: [SharedLocation]?
     /// The servers added in FileCat, with everything but their passwords (see `ServerShareRequest`).
     public var servers: [SharedServer]?
@@ -51,15 +52,95 @@ public struct SharedLocation: Codable, Hashable, Sendable {
         case folder, drive, iCloud, server
     }
 
+    /// Stays the same while the folder or server is in FileCat, so a companion app can follow it
+    /// (a server's ID is its `SharedServer.id`). Missing in manifests from before FileCat build 19.
+    public var id: String?
     public var name: String
     public var kind: Kind
     /// For servers: "smb://nas/Media", "https://cloud.example.com"…
     public var address: String?
+    /// For folders: FileCat's bookmark. Resolve it with `resolveBookmark()`.
+    public var bookmark: Data?
+    /// `false` while the folder can't be reached, such as a drive that's unplugged. It stays in
+    /// the list meanwhile: only folders removed in FileCat leave it.
+    public var isConnected: Bool?
 
-    public init(name: String, kind: Kind, address: String? = nil) {
+    public init(id: String? = nil, name: String, kind: Kind, address: String? = nil, bookmark: Data? = nil, isConnected: Bool? = nil) {
+        self.id = id
         self.name = name
         self.kind = kind
         self.address = address
+        self.bookmark = bookmark
+        self.isConnected = isConnected
+    }
+
+    /// The folder, from FileCat's bookmark. `isReadable` tells whether iOS lets this app in; if
+    /// not, the URL still identifies the folder (to match one the user picks).
+    public func resolveBookmark() -> (url: URL, isReadable: Bool)? {
+        guard let bookmark else { return nil }
+        var isStale = false
+        guard let url = try? URL(resolvingBookmarkData: bookmark, options: [], relativeTo: nil, bookmarkDataIsStale: &isStale) else {
+            return nil
+        }
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+        let isReadable = (try? FileManager.default.contentsOfDirectory(atPath: url.path(percentEncoded: false))) != nil
+        return (url, isReadable)
+    }
+}
+
+/// What a companion app took over from FileCat: kept at `.FileCat/companions/<app>.json`, so
+/// FileCat can warn that removing a folder or server removes it from the companion app too.
+public struct CompanionUsage: Codable, Hashable, Sendable {
+    public static let folderName = "companions"
+
+    /// The app's name, as shown to the user ("MusiCat").
+    public var app: String
+    /// IDs of FileCat's folders the app follows (`SharedLocation.id`).
+    public var locationIDs: [String]
+    /// IDs of FileCat's servers the app imported (`SharedServer.id`).
+    public var serverIDs: [String]
+
+    public init(app: String, locationIDs: [String] = [], serverIDs: [String] = []) {
+        self.app = app
+        self.locationIDs = locationIDs
+        self.serverIDs = serverIDs
+    }
+
+    public func uses(_ id: String) -> Bool {
+        locationIDs.contains(id) || serverIDs.contains(id)
+    }
+
+    public static func folder(in root: URL) -> URL {
+        root.appending(path: LibraryManifest.folderName, directoryHint: .isDirectory)
+            .appending(path: folderName, directoryHint: .isDirectory)
+    }
+
+    /// Every companion app's usage in a library.
+    public static func readAll(from root: URL) -> [CompanionUsage] {
+        let files = (try? FileManager.default.contentsOfDirectory(at: folder(in: root), includingPropertiesForKeys: nil)) ?? []
+        return files
+            .filter { $0.pathExtension == "json" }
+            .compactMap { try? Data(contentsOf: $0) }
+            .compactMap { try? JSONDecoder().decode(CompanionUsage.self, from: $0) }
+            .sorted { $0.app < $1.app }
+    }
+
+    /// Names of the companion apps that use a folder or server.
+    public static func apps(using id: String, in root: URL) -> [String] {
+        readAll(from: root).filter { $0.uses(id) }.map(\.app)
+    }
+
+    /// Writes this app's usage, unless it's already there.
+    public func write(to root: URL) throws {
+        let folder = Self.folder(in: root)
+        let url = folder.appending(path: app + ".json")
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(self)
+        if (try? Data(contentsOf: url)) == data { return }
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try data.write(to: url, options: .atomic)
     }
 }
 

@@ -574,6 +574,31 @@ final class FileCatUITests: XCTestCase {
         XCTAssertTrue(description.exists || folder.label.contains("iCloud Drive"), "Folder from Files mentions iCloud Drive")
     }
 
+    /// A drive that's plugged in but not added yet is offered in Connections. Removing a folder
+    /// that no companion app follows doesn't mention one.
+    func testNewDriveIsOfferedAndFolderRemoves() {
+        app.terminate()
+        app.launchArguments = ["-FileCatUITestReset", "YES", "-FileCatUITestDrive", "USB STICK", "-FileCatUITestLocation", "Tunes"]
+        app.launch()
+        openTab("network")
+        let drive = app.cells.containing(.staticText, identifier: "USB STICK").firstMatch
+        XCTAssertTrue(drive.waitForExistence(timeout: 5), "The plugged-in drive is offered")
+        XCTAssertTrue(app.buttons["addNewDrive"].exists)
+        drive.swipeLeft()
+        app.buttons["Ignore"].tap()
+        XCTAssertTrue(waitForDisappearance(drive), "Ignored drives go away")
+
+        let folder = app.cells.containing(.staticText, identifier: "Tunes").firstMatch
+        XCTAssertTrue(folder.exists)
+        folder.swipeLeft()
+        app.buttons["Remove"].tap()
+        let alert = app.alerts["Remove “Tunes”?"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 3))
+        XCTAssertTrue(alert.staticTexts["The folder itself isn't deleted."].exists, "No companion app is mentioned")
+        alert.buttons["Remove"].tap()
+        XCTAssertTrue(waitForDisappearance(folder))
+    }
+
     func testCompressBrowseAndExtractArchive() {
         app.staticTexts["Docs"].press(forDuration: 1.2)
         app.buttons["Compress"].tap()

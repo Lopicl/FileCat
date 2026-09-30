@@ -16,7 +16,11 @@ struct FileCatApp: App {
         // Must run before the stores below read their saved state.
         UITestSupport.prepareIfNeeded()
         #endif
-        _locations = State(initialValue: LocationStore())
+        let locations = LocationStore()
+        #if DEBUG
+        UITestSupport.addTestLocationIfNeeded(to: locations)
+        #endif
+        _locations = State(initialValue: locations)
         _player = State(initialValue: AudioPlayer())
         _tags = State(initialValue: TagStore())
         let sources = SourceStore()

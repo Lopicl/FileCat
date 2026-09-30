@@ -25,7 +25,7 @@ enum SharedManifest {
     static func setServers(_ sources: [NetworkSource]) {
         update { manifest in
             let others = (manifest.locations ?? []).filter { $0.kind != .server }
-            manifest.locations = others + sources.map { SharedLocation(name: $0.name, kind: .server, address: $0.displayAddress) }
+            manifest.locations = others + sources.map { SharedLocation(id: $0.id, name: $0.name, kind: .server, address: $0.displayAddress) }
             manifest.servers = sources.map(\.shared)
         }
     }

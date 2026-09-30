@@ -159,7 +159,7 @@ final class NetworkUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["127.0.0.1"].waitForExistence(timeout: 10))
 
         let musiCat = XCUIApplication(bundleIdentifier: "com.lopicl.MusiCat")
-        musiCat.launchArguments = ["-MusiCatUITestReset", "YES"]
+        musiCat.launchArguments = ["-MusiCatUITestReset", "YES", "-MusiCatUITestConnectFileCat", "YES"]
         musiCat.launch()
         guard musiCat.wait(for: .runningForeground, timeout: 10) else {
             throw XCTSkip("MusiCat isn't installed on this simulator.")
@@ -197,6 +197,61 @@ final class NetworkUITests: XCTestCase {
         XCTAssertEqual(songs.count, 3, "The server's three songs are in the library")
         songs.firstMatch.tap()
         XCTAssertTrue(musiCat.buttons["Pause"].waitForExistence(timeout: 20), "A song from the server plays")
+        musiCat.terminate()
+
+        // MusiCat follows FileCat's library, so removing the server in FileCat warns that MusiCat
+        // loses it too.
+        app.activate()
+        let row = app.cells.containing(.staticText, identifier: "127.0.0.1").firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.swipeLeft()
+        app.buttons["Remove"].tap()
+        let removal = app.alerts.firstMatch
+        XCTAssertTrue(removal.waitForExistence(timeout: 3))
+        XCTAssertTrue(removal.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'It\\'s also removed from MusiCat'")).firstMatch.exists, "The warning mentions MusiCat")
+        removal.buttons["Cancel"].tap()
+    }
+
+    /// MusiCat follows the folders added in FileCat: they show up in MusiCat by themselves, FileCat
+    /// warns that removing one removes it from MusiCat too, and it does. Needs MusiCat installed.
+    func testMusiCatFollowsFileCatFolders() throws {
+        app.terminate()
+        app.launchArguments = ["-FileCatUITestReset", "YES", "-FileCatUITestLocation", "Tunes"]
+        app.launch()
+        openTab("network")
+        let folder = app.cells.containing(.staticText, identifier: "Tunes").firstMatch
+        XCTAssertTrue(folder.waitForExistence(timeout: 5))
+
+        let musiCat = XCUIApplication(bundleIdentifier: "com.lopicl.MusiCat")
+        musiCat.launchArguments = ["-MusiCatUITestReset", "YES", "-MusiCatUITestConnectFileCat", "YES"]
+        musiCat.launch()
+        guard musiCat.wait(for: .runningForeground, timeout: 10) else {
+            throw XCTSkip("MusiCat isn't installed on this simulator.")
+        }
+        // The folder's song is in the library without picking anything.
+        let song = musiCat.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Drive Song'")).firstMatch
+        musiCat.tabBars.buttons["Songs"].tap()
+        XCTAssertTrue(song.waitForExistence(timeout: 10), "MusiCat scans FileCat's folder")
+        musiCat.tabBars.buttons["Settings"].tap()
+        XCTAssertTrue(musiCat.staticTexts["Tunes"].waitForExistence(timeout: 5))
+        XCTAssertTrue(musiCat.images["In Library"].exists, "MusiCat follows the folder")
+
+        // FileCat warns, because MusiCat follows the folder.
+        app.activate()
+        XCTAssertTrue(folder.waitForExistence(timeout: 5))
+        folder.swipeLeft()
+        app.buttons["Remove"].tap()
+        let alert = app.alerts["Remove “Tunes”?"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 3))
+        XCTAssertTrue(alert.staticTexts["It's also removed from MusiCat. The folder itself isn't deleted."].exists, "The warning mentions MusiCat")
+        alert.buttons["Remove"].tap()
+        XCTAssertTrue(waitForDisappearance(folder))
+
+        // Gone from MusiCat too, with its song.
+        musiCat.activate()
+        XCTAssertTrue(waitForDisappearance(musiCat.staticTexts["Tunes"], timeout: 5), "MusiCat drops the folder")
+        musiCat.tabBars.buttons["Songs"].tap()
+        XCTAssertFalse(song.exists, "and its songs")
         musiCat.terminate()
     }
 

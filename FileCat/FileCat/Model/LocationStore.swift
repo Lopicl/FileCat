@@ -36,15 +36,20 @@ struct DisconnectedLocation: Identifiable, Hashable {
 }
 
 /// The app's own storage plus any folders the user added from Files (iCloud Drive, USB drives, …).
-/// External folders are remembered with bookmarks so access survives relaunches, and drives that
-/// were unplugged come back on their own once they're plugged in again.
+/// External folders are remembered with bookmarks so access survives relaunches. Drives leave the
+/// list while they're unplugged and come back on their own when they're plugged in again, and
+/// drives plugged in for the first time are offered in `newDrives`.
 @MainActor
 @Observable
 final class LocationStore {
     let documents: Location
     private(set) var locations: [Location] = []
-    /// Saved folders whose bookmark doesn't resolve right now (an unplugged drive, say).
+    /// Saved folders whose bookmark doesn't resolve right now. Unplugged drives aren't listed:
+    /// they're hidden until they're plugged in again.
     private(set) var disconnected: [DisconnectedLocation] = []
+    /// Names of drives that are plugged in but haven't been added yet. iOS only lets the app in
+    /// once the user picks the drive in the Files picker.
+    private(set) var newDrives: [String] = []
 
     private struct SavedLocation: Codable {
         var id: String
@@ -52,11 +57,23 @@ final class LocationStore {
         var bookmark: Data
         /// Remembered so an unplugged drive still shows a drive icon.
         var isExternalDrive: Bool?
+        /// The drive's name, to recognise it when it's plugged in (the folder may be inside it).
+        var volumeName: String?
+
+        /// The name the drive monitor reports for this folder's drive, if it's on one.
+        var driveName: String? {
+            guard isExternalDrive == true else { return nil }
+            return volumeName ?? name
+        }
     }
 
     @ObservationIgnored private var saved: [SavedLocation] = []
     @ObservationIgnored private var accessedURLs: [String: URL] = [:]
     @ObservationIgnored private var activationObserver: NSObjectProtocol?
+    @ObservationIgnored private var driveMonitor: ExternalDriveMonitor?
+    @ObservationIgnored private var driveRetry: Task<Void, Never>?
+    /// New drives the user dismissed; they're offered again once replugged.
+    @ObservationIgnored private var dismissedDrives: Set<String> = []
     private let defaultsKey = "savedLocations"
 
     init() {
@@ -73,6 +90,19 @@ final class LocationStore {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.reconnect() }
         }
+        driveMonitor = ExternalDriveMonitor { [weak self] in self?.drivesChanged() }
+        updateNewDrives()
+    }
+
+    /// True if some saved folder (maybe a hidden, unplugged drive) can't be reached.
+    var hasUnreachable: Bool {
+        saved.count > locations.count
+    }
+
+    /// Hides a new drive until it's plugged in again.
+    func dismissNewDrive(_ name: String) {
+        dismissedDrives.insert(Self.key(name))
+        updateNewDrives()
     }
 
     var all: [Location] { [documents] + locations }
@@ -88,13 +118,18 @@ final class LocationStore {
         }
         let accessing = url.startAccessingSecurityScopedResource()
         let bookmark = try url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
-        let entry = SavedLocation(id: UUID().uuidString, name: url.lastPathComponent, bookmark: bookmark, isExternalDrive: Self.isExternalDrive(url))
+        let isDrive = Self.isExternalDrive(url)
+        let entry = SavedLocation(
+            id: UUID().uuidString, name: url.lastPathComponent, bookmark: bookmark,
+            isExternalDrive: isDrive, volumeName: isDrive ? Self.volumeName(url) : nil
+        )
         saved.append(entry)
         if accessing { accessedURLs[entry.id] = url }
 
         let location = makeLocation(entry, url: url)
         locations.append(location)
         persist()
+        updateNewDrives()
         return location
     }
 
@@ -103,18 +138,24 @@ final class LocationStore {
     }
 
     func remove(id: String) {
+        // A drive removed while it's plugged in isn't offered as new straight away.
+        if let driveName = saved.first(where: { $0.id == id })?.driveName {
+            dismissedDrives.insert(Self.key(driveName))
+        }
         accessedURLs.removeValue(forKey: id)?.stopAccessingSecurityScopedResource()
         saved.removeAll { $0.id == id }
         locations.removeAll { $0.id == id }
         disconnected.removeAll { $0.id == id }
         persist()
+        updateNewDrives()
     }
 
     /// Tries the bookmarks of folders that couldn't be reached, and drops folders whose drive was
     /// unplugged. Cheap enough to call whenever the app becomes active or the Connections tab shows.
     func reconnect() {
         var changed = false
-        // Folders that went away (the drive was unplugged) move to the disconnected list.
+        defer { updateNewDrives() }
+        // Folders that went away (the drive was unplugged) leave the list until they come back.
         for location in locations where !FileManager.default.fileExists(atPath: location.url.path(percentEncoded: false)) {
             accessedURLs.removeValue(forKey: location.id)?.stopAccessingSecurityScopedResource()
             locations.removeAll { $0.id == location.id }
@@ -169,12 +210,45 @@ final class LocationStore {
         if entry.isExternalDrive == nil {
             entry.isExternalDrive = Self.isExternalDrive(url)
         }
+        if entry.isExternalDrive == true, entry.volumeName == nil {
+            entry.volumeName = Self.volumeName(url)
+        }
         return url
+    }
+
+    /// A drive was plugged in or out. The system mounts a new drive a moment after it's reported,
+    /// so its folders are tried again for a few seconds.
+    private func drivesChanged() {
+        reconnect()
+        driveRetry?.cancel()
+        driveRetry = Task { [weak self] in
+            for delay in [1, 2, 4] {
+                try? await Task.sleep(for: .seconds(delay))
+                guard !Task.isCancelled, let self, self.hasUnreachable else { return }
+                self.reconnect()
+            }
+        }
+    }
+
+    private func updateNewDrives() {
+        let plugged = driveMonitor?.driveNames ?? []
+        let pluggedKeys = Set(plugged.map(Self.key))
+        // Dismissed drives are offered again after they're replugged.
+        dismissedDrives.formIntersection(pluggedKeys)
+        let known = Set(saved.compactMap(\.driveName).map(Self.key))
+        let fresh = plugged.filter { !known.contains(Self.key($0)) && !dismissedDrives.contains(Self.key($0)) }
+        if fresh != newDrives { newDrives = fresh }
+    }
+
+    private static func key(_ driveName: String) -> String {
+        driveName.lowercased()
     }
 
     private func updateDisconnected() {
         let fresh = saved
             .filter { entry in !locations.contains { $0.id == entry.id } }
+            // Unplugged drives are hidden, not listed as disconnected.
+            .filter { $0.isExternalDrive != true }
             .map { DisconnectedLocation(id: $0.id, name: $0.name, systemImage: $0.isExternalDrive == true ? "externaldrive" : "folder") }
         if fresh != disconnected { disconnected = fresh }
     }
@@ -199,15 +273,22 @@ final class LocationStore {
         return values?.volumeIsRemovable == true || values?.volumeIsEjectable == true
     }
 
+    private static func volumeName(_ url: URL) -> String? {
+        (try? url.resourceValues(forKeys: [.volumeNameKey]))?.volumeName
+    }
+
     private func persist() {
         if let data = try? JSONEncoder().encode(saved) {
             UserDefaults.standard.set(data, forKey: defaultsKey)
         }
-        // Companion apps see the folders' names (not access to them).
+        // Companion apps get the bookmarks too, so they can follow the same folders.
         let shared = saved.map { entry in
             let location = locations.first { $0.id == entry.id }
             let kind: SharedLocation.Kind = entry.isExternalDrive == true ? .drive : location?.isICloud == true ? .iCloud : .folder
-            return SharedLocation(name: location?.name ?? entry.name, kind: kind)
+            return SharedLocation(
+                id: entry.id, name: location?.name ?? entry.name, kind: kind,
+                bookmark: entry.bookmark, isConnected: location != nil
+            )
         }
         SharedManifest.setLocations(shared, ofKinds: [.folder, .drive, .iCloud])
     }
