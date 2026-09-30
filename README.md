@@ -65,7 +65,7 @@ It has no third-party dependencies: the network protocols are implemented in Swi
 
 ## Companion apps (FileCatKit)
 
-The first one is **MusiCat** (`MusiCat/`, bundle ID `com.lopicl.MusiCat`), a music player with playlists, several artists per song, and hi-res WAV/FLAC/ALAC playback at each file's own sample rate for USB DACs. It imports FileCat's servers and plays music from them. It's a placeholder for now; see `MusiCat/README.md`.
+The first one is **MusiCat** ([github.com/Lopicl/MusiCat](https://github.com/Lopicl/MusiCat), cloned into `MusiCat/`, bundle ID `com.lopicl.MusiCat`), a music player with playlists, several artists per song, and hi-res WAV/FLAC/ALAC playback at each file's own sample rate for USB DACs. It imports FileCat's servers and plays music from them. It's a placeholder for now; see `MusiCat/README.md`.
 
 FileCat's storage is ready to be shared with other apps you build, such as a dedicated music or video player. `Packages/FileCatKit` is a Swift package that both FileCat and those apps use:
 
@@ -98,10 +98,12 @@ This works with a free (personal) developer team; no App Group or iCloud entitle
 - iOS / iPadOS **18.0+**
 
 ## Getting started
-1. Open `FileCat/FileCat.xcodeproj` in Xcode.
+1. Clone the repository (`git clone https://github.com/Lopicl/FileCat.git`) and open `FileCat/FileCat.xcodeproj` in Xcode.
 2. Select the **FileCat** target → *Signing & Capabilities* → choose your **Team**. You can change the bundle ID (`com.lopicl.FileCat`) if you like.
 3. Choose an iPhone or iPad simulator (or your device) and press **Run** (⌘R).
 4. To get test files into the simulator, drag them onto the simulator window and save them to *On My iPhone › FileCat*, or use + › *Import from Files* inside the app.
+
+To build MusiCat as well, clone it inside this checkout: `git clone https://github.com/Lopicl/MusiCat.git MusiCat` (this repository ignores `MusiCat/`).
 
 Any `.swift` file you add under `FileCat/FileCat/` is picked up automatically, so you don't need to edit the project file. Raise the build number (`CURRENT_PROJECT_VERSION`) with every build you hand out.
 
@@ -145,8 +147,9 @@ FileCat/                        The FileCat app
   FileCatUITests/               UI tests
   FileCat-Info.plist            Background audio, file sharing, "Open in", filecat:// links, local network
   FileCatWidgets-Info.plist
-MusiCat/                        MusiCat, the companion music player (placeholder; see MusiCat/README.md). Also
-                                compiles FileCat's protocol files from FileCat/FileCat/Network (group "FileCat Network")
+MusiCat/                        MusiCat, the companion music player: its own repository (github.com/Lopicl/MusiCat),
+                                cloned here and ignored by this one. Compiles FileCat's protocol files from
+                                FileCat/FileCat/Network (group "FileCat Network")
 Packages/FileCatKit/            Shared library for FileCat and companion apps (+ tests)
 Tools/make-app-icon.swift       Draws FileCat's icon: xcrun swift Tools/make-app-icon.swift FileCat/FileCat/Assets.xcassets/AppIcon.appiconset/AppIcon.png
 Tools/make-musicat-icon.swift   Draws MusiCat's icon: a vinyl record with a cat-shaped hole
