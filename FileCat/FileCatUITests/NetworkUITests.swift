@@ -164,7 +164,7 @@ final class NetworkUITests: XCTestCase {
         guard musiCat.wait(for: .runningForeground, timeout: 10) else {
             throw XCTSkip("MusiCat isn't installed on this simulator.")
         }
-        musiCat.tabBars.buttons["Sources"].tap()
+        musiCat.tabBars.buttons["Settings"].tap()
         let importButton = musiCat.buttons["importServers"]
         XCTAssertTrue(importButton.waitForExistence(timeout: 5))
         importButton.tap()

@@ -1,17 +1,22 @@
+#if os(iOS)
 import AVFoundation
 import SwiftUI
 
-/// The cat at the very end of Settings, seen from above: a head with ears, eyes, a nose and
+/// The cat at the very end of Settings (in FileCat and MusiCat), seen from above: a head with ears, eyes, a nose and
 /// whiskers on a body that goes on past the bottom of the screen, however far you pull. Pull hard
 /// enough and it meows. Traced from a 680×680 SVG, whose coordinates the drawing keeps.
-struct LongCat: View {
+public struct LongCat: View {
     /// Times it has meowed; also its accessibility value, for UI tests.
     var meows = 0
+
+    public init(meows: Int = 0) {
+        self.meows = meows
+    }
 
     /// Points per unit of the SVG's 680-unit view box.
     private let scale: CGFloat = 0.8
 
-    var body: some View {
+    public var body: some View {
         CatFace()
             .frame(width: CatFace.box.width * scale, height: CatFace.box.height * scale)
             // The body, drawn much longer than the space it takes, so the end is never in sight
@@ -81,10 +86,11 @@ private struct CatFace: View {
     }
 }
 
-extension View {
+public extension View {
     /// Calls `action` when the scroll view is dragged up past its end by more than `threshold`
     /// points, which rubber-banding makes hard: it takes a long, deliberate drag with the finger
-    /// down. Flinging into the end doesn't count. Fires once per pull.
+    /// down. Flinging into the end doesn't count. Fires once per pull. Use it on a `Form`: a
+    /// `List` doesn't report its scroll phase, so the pull never counts there.
     func onHardOverscroll(threshold: CGFloat = 150, perform action: @escaping () -> Void) -> some View {
         modifier(HardOverscroll(threshold: threshold, action: action))
     }
@@ -120,11 +126,11 @@ private struct HardOverscroll: ViewModifier {
 /// A meow, synthesized: a rising then falling pitch with a vowel that opens from "ee" to "ah" and
 /// closes to "oo", like "mee-ah-ow".
 @MainActor
-enum Meow {
+public enum Meow {
     private static var player: AVAudioPlayer?
     private static let sound: Data = makeWAV()
 
-    static func play() {
+    public static func play() {
         player = try? AVAudioPlayer(data: sound)
         player?.volume = 0.8
         player?.play()
@@ -178,3 +184,4 @@ enum Meow {
         return data
     }
 }
+#endif
