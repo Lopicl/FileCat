@@ -253,7 +253,7 @@ struct NetworkView: View {
     /// A drive that was just plugged in: Add opens the Files picker to choose it.
     private func newDriveRow(_ name: String) -> some View {
         LabeledContent {
-            Button("Add") { router.requestImport(.location) }
+            Button("Add") { router.requestImport(.drive(name: name)) }
                 .buttonStyle(.bordered)
                 .accessibilityIdentifier("addNewDrive")
         } label: {

@@ -301,6 +301,10 @@ struct ContentView: View {
                 for url in urls {
                     try store.add(url)
                 }
+            case .drive(let name):
+                for url in urls {
+                    try store.add(url, driveName: name)
+                }
             case .remoteUpload(let folder):
                 try transfers.upload(urls, to: folder)
             }

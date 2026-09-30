@@ -52,10 +52,17 @@ enum UITestSupport {
 
     /// For testing folders from Files: launch with `-FileCatUITestLocation Tunes` to add a folder
     /// named Tunes, holding "Drive Song.wav", as if it was picked in the Files picker.
+    /// `-FileCatUITestLocation DRIVE` adds a drive's own folder instead: named with an ID, where
+    /// iOS mounts drives.
     @MainActor
     static func addTestLocationIfNeeded(to store: LocationStore) {
-        guard let name = UserDefaults.standard.string(forKey: "FileCatUITestLocation") else { return }
-        let folder = URL.temporaryDirectory.appending(path: "UITestLocations").appending(path: name)
+        guard var name = UserDefaults.standard.string(forKey: "FileCatUITestLocation") else { return }
+        var parent = URL.temporaryDirectory.appending(path: "UITestLocations")
+        if name == "DRIVE" {
+            name = UUID().uuidString
+            parent = parent.appending(path: "LiveFiles")
+        }
+        let folder = parent.appending(path: name)
         try? FileManager.default.removeItem(at: folder)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         try? toneWAV(seconds: 5).write(to: folder.appending(path: "Drive Song.wav"))

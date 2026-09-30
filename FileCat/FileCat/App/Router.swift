@@ -5,19 +5,21 @@ import UniformTypeIdentifiers
 enum ImportRequest {
     case files(into: URL)
     case location
+    /// A drive that was just plugged in, from its Add button: the connection takes its name.
+    case drive(name: String)
     case remoteUpload(RemoteItem)
 
     var contentTypes: [UTType] {
         switch self {
         case .files, .remoteUpload: [.item]
-        case .location: [.folder]
+        case .location, .drive: [.folder]
         }
     }
 
     var allowsMultipleSelection: Bool {
         switch self {
         case .files, .remoteUpload: true
-        case .location: false
+        case .location, .drive: false
         }
     }
 }

@@ -63,7 +63,7 @@ final class LocationStore {
         /// The name the drive monitor reports for this folder's drive, if it's on one.
         var driveName: String? {
             guard isExternalDrive == true else { return nil }
-            return volumeName ?? name
+            return volumeName.flatMap { LocationStore.isGeneratedName($0) ? nil : $0 } ?? name
         }
     }
 
@@ -111,17 +111,27 @@ final class LocationStore {
         all.first { $0.id == id }
     }
 
+    /// Adds a folder picked in Files. `driveName` is the new drive the user chose to add, if any:
+    /// a drive's own folder is named with an ID, so the connection takes the drive's name instead.
     @discardableResult
-    func add(_ url: URL) throws -> Location {
+    func add(_ url: URL, driveName: String? = nil) throws -> Location {
         if let existing = all.first(where: { FileService.isSameLocation($0.url, url) }) {
             return existing
         }
         let accessing = url.startAccessingSecurityScopedResource()
         let bookmark = try url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
         let isDrive = Self.isExternalDrive(url)
+        var name = url.lastPathComponent
+        var volumeName: String?
+        if isDrive {
+            volumeName = driveName ?? self.driveName(of: url)
+            if Self.isGeneratedName(name) {
+                name = volumeName ?? Self.localizedName(url) ?? name
+            }
+        }
         let entry = SavedLocation(
-            id: UUID().uuidString, name: url.lastPathComponent, bookmark: bookmark,
-            isExternalDrive: isDrive, volumeName: isDrive ? Self.volumeName(url) : nil
+            id: UUID().uuidString, name: name, bookmark: bookmark,
+            isExternalDrive: isDrive, volumeName: volumeName
         )
         saved.append(entry)
         if accessing { accessedURLs[entry.id] = url }
@@ -162,8 +172,11 @@ final class LocationStore {
             changed = true
         }
         for index in saved.indices where !locations.contains(where: { $0.id == saved[index].id }) {
-            if let url = resolve(&saved[index]) {
-                locations.append(makeLocation(saved[index], url: url))
+            // Resolved on a copy: resolving reads `saved` to name drives.
+            var entry = saved[index]
+            if let url = resolve(&entry) {
+                saved[index] = entry
+                locations.append(makeLocation(entry, url: url))
                 changed = true
             }
         }
@@ -211,7 +224,12 @@ final class LocationStore {
             entry.isExternalDrive = Self.isExternalDrive(url)
         }
         if entry.isExternalDrive == true, entry.volumeName == nil {
-            entry.volumeName = Self.volumeName(url)
+            entry.volumeName = driveName(of: url)
+        }
+        // Drives added before build 20 were named after the ID of their folder.
+        if entry.isExternalDrive == true, Self.isGeneratedName(entry.name),
+           let better = entry.volumeName.flatMap({ Self.isGeneratedName($0) ? nil : $0 }) ?? Self.localizedName(url) {
+            entry.name = better
         }
         return url
     }
@@ -235,9 +253,57 @@ final class LocationStore {
         let pluggedKeys = Set(plugged.map(Self.key))
         // Dismissed drives are offered again after they're replugged.
         dismissedDrives.formIntersection(pluggedKeys)
-        let known = Set(saved.compactMap(\.driveName).map(Self.key))
-        let fresh = plugged.filter { !known.contains(Self.key($0)) && !dismissedDrives.contains(Self.key($0)) }
+        var known = Set(saved.compactMap(\.driveName).map(Self.key))
+        var fresh = plugged.filter { !known.contains(Self.key($0)) && !dismissedDrives.contains(Self.key($0)) }
+        // A drive added under its folder's ID, while the one unknown drive plugged in: they're the
+        // same drive, so it takes that name.
+        let unnamed = saved.indices.filter { index in
+            saved[index].isExternalDrive == true && saved[index].driveName.map(Self.isGeneratedName) == true
+                && locations.contains { $0.id == saved[index].id }
+        }
+        let unknown = plugged.filter { !known.contains(Self.key($0)) }
+        if unnamed.count == 1, unknown.count == 1 {
+            rename(driveAt: unnamed[0], to: unknown[0])
+            known.insert(Self.key(unknown[0]))
+            fresh.removeAll { Self.key($0) == Self.key(unknown[0]) }
+        }
         if fresh != newDrives { newDrives = fresh }
+    }
+
+    private func rename(driveAt index: Int, to name: String) {
+        saved[index].volumeName = name
+        if Self.isGeneratedName(saved[index].name) { saved[index].name = name }
+        if let location = locations.firstIndex(where: { $0.id == saved[index].id }) {
+            locations[location].name = saved[index].name
+        }
+        persist()
+    }
+
+    /// The name the drive monitor knows a drive by: its volume name if the monitor reports that,
+    /// else the one unknown drive that's plugged in, else the volume name.
+    private func driveName(of url: URL) -> String? {
+        let values = try? url.resourceValues(forKeys: [.volumeLocalizedNameKey, .volumeNameKey])
+        let names = [values?.volumeLocalizedName, values?.volumeName]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty && !Self.isGeneratedName($0) }
+        let plugged = driveMonitor?.driveNames ?? []
+        if let match = plugged.first(where: { drive in names.contains { Self.key($0) == Self.key(drive) } }) {
+            return match
+        }
+        let known = Set(saved.compactMap(\.driveName).map(Self.key))
+        let unknown = plugged.filter { !known.contains(Self.key($0)) }
+        if unknown.count == 1 { return unknown[0] }
+        return names.first
+    }
+
+    private static func localizedName(_ url: URL) -> String? {
+        let name = (try? url.resourceValues(forKeys: [.localizedNameKey]))?.localizedName
+        return name.flatMap { $0.isEmpty || isGeneratedName($0) ? nil : $0 }
+    }
+
+    /// IDs like "8A1C0E4F-…", which iOS uses for the folders drives are mounted on.
+    nonisolated static func isGeneratedName(_ name: String) -> Bool {
+        name.count >= 16 && name.allSatisfy { $0.isHexDigit || $0 == "-" }
     }
 
     private static func key(_ driveName: String) -> String {
@@ -271,10 +337,6 @@ final class LocationStore {
         }
         let values = try? url.resourceValues(forKeys: [.volumeIsRemovableKey, .volumeIsEjectableKey])
         return values?.volumeIsRemovable == true || values?.volumeIsEjectable == true
-    }
-
-    private static func volumeName(_ url: URL) -> String? {
-        (try? url.resourceValues(forKeys: [.volumeNameKey]))?.volumeName
     }
 
     private func persist() {

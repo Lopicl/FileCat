@@ -599,6 +599,19 @@ final class FileCatUITests: XCTestCase {
         XCTAssertTrue(waitForDisappearance(folder))
     }
 
+    /// A drive's own folder is named with an ID; the connection takes the drive's name instead.
+    func testAddedDriveTakesTheDriveName() {
+        app.terminate()
+        app.launchArguments = ["-FileCatUITestReset", "YES", "-FileCatUITestDrive", "USB STICK", "-FileCatUITestLocation", "DRIVE"]
+        app.launch()
+        openTab("network")
+        let drive = app.cells.containing(.staticText, identifier: "USB STICK").firstMatch
+        XCTAssertTrue(drive.waitForExistence(timeout: 5), "The connection is named after the drive")
+        XCTAssertFalse(app.buttons["addNewDrive"].exists, "The drive isn't offered as new any more")
+        let ids = app.staticTexts.matching(NSPredicate(format: "label MATCHES '^[0-9A-Fa-f-]{16,}$'"))
+        XCTAssertEqual(ids.count, 0, "No ID is shown")
+    }
+
     func testCompressBrowseAndExtractArchive() {
         app.staticTexts["Docs"].press(forDuration: 1.2)
         app.buttons["Compress"].tap()
