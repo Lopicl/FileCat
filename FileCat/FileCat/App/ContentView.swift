@@ -36,6 +36,8 @@ struct ContentView: View {
                 // instead (see SidebarSettingsButton).
                 settingsTab
                     .defaultVisibility(.hidden, for: .sidebar)
+                    // Keeps it out of the sidebar's Edit list too, where it showed as a switched-off row.
+                    .customizationBehavior(.disabled, for: .sidebar)
             } else {
                 // iPhone: plain tabs; extra ones would end up under "More".
                 networkTab
@@ -187,6 +189,8 @@ struct ContentView: View {
                 stack(for: .tags) { TagsView() }
             }
             .customizationID("tags")
+            // The section's only fixed row; each tag can be hidden in the sidebar's Edit mode.
+            .customizationBehavior(.disabled, for: .sidebar)
             .accessibilityIdentifier("tab-tags")
 
             ForEach(tagStore.tags) { tag in
@@ -205,8 +209,6 @@ struct ContentView: View {
             }
         }
         .customizationID("section.tags.menu")
-        // Hiding the section in the sidebar's Edit mode left no way to bring it back.
-        .customizationBehavior(.disabled, for: .sidebar)
     }
 
     /// iPad: the Connections dropdown in the tab bar and section in the sidebar.
@@ -217,6 +219,8 @@ struct ContentView: View {
                 stack(for: .network) { NetworkView() }
             }
             .customizationID("network")
+            // The section's only fixed row; each server and folder can be hidden in Edit mode.
+            .customizationBehavior(.disabled, for: .sidebar)
             .accessibilityIdentifier("tab-network")
 
             ForEach(sources.sources) { source in
@@ -237,8 +241,6 @@ struct ContentView: View {
             }
         }
         .customizationID("section.network.menu")
-        // Hiding the section in the sidebar's Edit mode left no way to bring it back.
-        .customizationBehavior(.disabled, for: .sidebar)
     }
 
     /// A tab's navigation stack, with every kind of destination the browser can push.
@@ -266,7 +268,8 @@ struct ContentView: View {
         }
     }
 
-    /// Brings back the Connections and Tags sections for anyone who hid them before they were locked.
+    /// Brings back the Connections and Tags sections for anyone who hid them in an older build
+    /// (hiding a whole section left no way to bring it back).
     private func showSections() {
         for id in ["section.network.menu", "section.tags.menu"] where customization[sidebarVisibility: id] == .hidden {
             customization[sidebarVisibility: id] = .visible
