@@ -298,7 +298,7 @@ private struct LocationTitle: ViewModifier {
             return PathCrumb(title: "Tags", icon: .symbol("tag"), stack: [])
         case .tag(let name):
             return PathCrumb(title: name, icon: tagIcon(name), stack: [])
-        case .settings, .activity:
+        case .settings:
             return PathCrumb(title: "Settings", icon: .symbol("gearshape"), stack: [])
         }
     }

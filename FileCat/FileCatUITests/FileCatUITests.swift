@@ -711,21 +711,22 @@ final class FileCatUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Docs"].waitForExistence(timeout: 3))
         app.navigationBars["Docs"].buttons["Copy"].tap()
 
-        let indicator = app.tabBars.buttons["Activity"].exists ? app.tabBars.buttons["Activity"] : app.buttons["activityButton"]
+        let indicator = app.buttons["activityButton"].firstMatch
         XCTAssertTrue(indicator.waitForExistence(timeout: 5), "The activity indicator appears")
         indicator.tap()
         XCTAssertTrue(app.staticTexts["Copied “hello.txt”"].waitForExistence(timeout: 5), "The copy is listed")
         app.buttons["Clear"].tap()
         // With nothing left to show, the indicator goes away (on iPad taking its popover along).
         if app.buttons["Done"].firstMatch.waitForExistence(timeout: 1) { app.buttons["Done"].firstMatch.tap() }
-        XCTAssertTrue(waitForDisappearance(app.tabBars.buttons["Activity"]) && waitForDisappearance(app.buttons["activityButton"]))
+        XCTAssertTrue(waitForDisappearance(app.buttons["activityButton"].firstMatch))
+        XCTAssertFalse(app.tabBars.buttons["Activity"].exists, "Activity isn't a tab on iPhone")
     }
 
     func testRunningActivityCanBeCancelled() {
         app.terminate()
         app.launchArguments = ["-FileCatUITestReset", "YES", "-FileCatDemoActivity", "30"]
         app.launch()
-        let indicator = app.tabBars.buttons["Activity"].exists ? app.tabBars.buttons["Activity"] : app.buttons["activityButton"]
+        let indicator = app.buttons["activityButton"].firstMatch
         XCTAssertTrue(indicator.waitForExistence(timeout: 10))
         indicator.tap()
         XCTAssertTrue(app.staticTexts["Copying “Holiday Photos”"].waitForExistence(timeout: 3))

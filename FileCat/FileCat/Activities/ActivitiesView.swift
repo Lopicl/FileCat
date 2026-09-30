@@ -136,34 +136,33 @@ struct ActivityRing: View {
         }
         .frame(width: size, height: size)
     }
+}
 
-    /// The ring as a template image, for the tab bar (which only takes images).
-    @MainActor
-    static func image(running: Int, fraction: Double?, phase: Int, side: CGFloat = 26) -> UIImage {
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: side, height: side))
-        let image = renderer.image { context in
-            let cg = context.cgContext
-            let line = side * 0.1
-            let rect = CGRect(x: 0, y: 0, width: side, height: side).insetBy(dx: line / 2 + 0.5, dy: line / 2 + 0.5)
-            cg.setLineWidth(line)
-            cg.setStrokeColor(UIColor.black.withAlphaComponent(0.25).cgColor)
-            cg.strokeEllipse(in: rect)
+/// The activity indicator floating in the bottom corner, shown once anything has run until the
+/// list is cleared; tap for the activity list. iPad opens it as a popover, iPhone as a sheet.
+struct ActivityFloatingButton: View {
+    @Environment(Router.self) private var router
+    @Environment(\.usesSidebarLayout) private var usesSidebarLayout
+    @State private var isShowingList = false
 
-            let amount = running == 0 ? 1 : max(0.04, fraction ?? 0.25)
-            let start = -CGFloat.pi / 2 + (running > 0 && fraction == nil ? CGFloat(phase) * .pi / 6 : 0)
-            let arc = UIBezierPath(arcCenter: CGPoint(x: rect.midX, y: rect.midY), radius: rect.width / 2,
-                                   startAngle: start, endAngle: start + CGFloat(amount) * 2 * .pi, clockwise: true)
-            arc.lineWidth = line
-            arc.lineCapStyle = .round
-            UIColor.black.setStroke()
-            arc.stroke()
-
-            let text = running > 0 ? "\(running)" : "✓"
-            let font = UIFont.systemFont(ofSize: side * 0.42, weight: .bold)
-            let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: UIColor.black]
-            let size = (text as NSString).size(withAttributes: attributes)
-            (text as NSString).draw(at: CGPoint(x: (side - size.width) / 2, y: (side - size.height) / 2), withAttributes: attributes)
+    var body: some View {
+        Button {
+            if usesSidebarLayout {
+                isShowingList = true
+            } else {
+                router.showsActivities = true
+            }
+        } label: {
+            ActivityRing(size: 28)
+                .frame(width: 52, height: 52)
+                .modifier(GlassCapsule())
         }
-        return image.withRenderingMode(.alwaysTemplate)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Activity")
+        .accessibilityIdentifier("activityButton")
+        .popover(isPresented: $isShowingList) {
+            ActivitiesView()
+                .frame(minWidth: 380, minHeight: 420)
+        }
     }
 }

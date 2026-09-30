@@ -27,8 +27,6 @@ enum ImportRequest {
 /// The app's tabs. On iPad the sidebar also lists each tag, folder and server as its own tab.
 enum AppTab: Hashable {
     case local, tags, network, settings
-    /// Not a real tab: the Activity button in the iPhone tab bar, which opens the activity list.
-    case activity
     case tag(String)
     case location(String)
     case server(String)

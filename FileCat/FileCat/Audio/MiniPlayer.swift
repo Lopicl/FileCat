@@ -1,28 +1,47 @@
 import SwiftUI
 
 extension View {
-    /// Shows the mini player above this screen's bottom toolbar and search bar while music is loaded.
+    /// Shows the mini player above this screen's bottom toolbar and search bar while music is loaded,
+    /// and on iPhone the activity button above it (on iPad that floats in the window's corner).
     ///
     /// It has to be applied to each screen inside the navigation stack: an inset on the split view
     /// itself sits outside the navigation bars, so the system toolbars end up underneath it.
-    func miniPlayerInset() -> some View {
-        modifier(MiniPlayerInset())
+    func miniPlayerInset(showsPlayer: Bool = true) -> some View {
+        modifier(MiniPlayerInset(showsPlayer: showsPlayer))
     }
 }
 
 private struct MiniPlayerInset: ViewModifier {
+    let showsPlayer: Bool
+
     @Environment(AudioPlayer.self) private var player
     @Environment(Router.self) private var router
+    @Environment(\.usesSidebarLayout) private var usesSidebarLayout
+    private var activities: ActivityCenter { .shared }
 
     func body(content: Content) -> some View {
+        let isCovered = router.isSearching || router.isImmersive
+        let showsMiniPlayer = showsPlayer && player.current != nil && !isCovered
+        let showsActivity = !usesSidebarLayout && !activities.activities.isEmpty && !isCovered
         content
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                if player.current != nil && !router.isSearching && !router.isImmersive {
-                    MiniPlayer { router.showsNowPlaying = true }
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                // Stacked so the two never overlap; lists scroll clear of both.
+                VStack(spacing: 0) {
+                    if showsActivity {
+                        ActivityFloatingButton()
+                            .padding(.trailing, 12)
+                            .padding(.bottom, 8)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                            .transition(.scale(scale: 0.6).combined(with: .opacity))
+                    }
+                    if showsMiniPlayer {
+                        MiniPlayer { router.showsNowPlaying = true }
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
                 }
             }
-            .animation(.snappy, value: player.current == nil || router.isSearching || router.isImmersive)
+            .animation(.snappy, value: showsMiniPlayer)
+            .animation(.snappy, value: showsActivity)
     }
 }
 

@@ -4,7 +4,7 @@ import Observation
 import UIKit
 
 /// Everything FileCat does that takes a while (copying, moving, downloads, uploads, extracting and
-/// compressing), so one indicator can show it all: the Activity button in the tab bar, its list,
+/// compressing), so one indicator can show it all: the floating Activity button, its list,
 /// and a Live Activity while the app is in the background.
 @MainActor
 @Observable
@@ -70,8 +70,7 @@ final class ActivityCenter {
 
     /// Newest first; finished ones stay as history until cleared.
     private(set) var activities: [Activity] = []
-    /// Ticks while something runs, to animate indicators that can't animate themselves (the tab
-    /// bar's image).
+    /// Ticks while something runs, to spin the activity ring while progress isn't known.
     private(set) var spinnerPhase = 0
 
     @ObservationIgnored private var cancels: [UUID: () -> Void] = [:]

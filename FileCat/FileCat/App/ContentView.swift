@@ -25,7 +25,7 @@ struct ContentView: View {
 
         // On iPhone this is a tab bar at the bottom. On iPad it's the floating bar at the top, which
         // expands into a sidebar listing every tag, folder and server.
-        TabView(selection: tabSelection) {
+        TabView(selection: $router.selectedTab) {
             localTab
             if usesSidebarLayout {
                 // iPad: Connections and Tags are dropdowns in the tab bar (sections in the sidebar)
@@ -43,13 +43,14 @@ struct ContentView: View {
                 networkTab
                 if tagsEnabled { tagsTab }
                 settingsTab
-                if !activities.activities.isEmpty { activityTab }
             }
         }
         .overlay(alignment: .bottomTrailing) {
-            // iPad: the tab bar is at the top, so the activity indicator floats in the corner.
+            // iPad: the activity indicator floats in the corner. On iPhone it floats above each
+            // screen's bottom bars and the mini player instead (see `miniPlayerInset`).
             if usesSidebarLayout, !activities.activities.isEmpty {
                 ActivityFloatingButton()
+                    .padding(20)
             }
         }
         .sheet(isPresented: $router.showsActivities) {
@@ -138,44 +139,13 @@ struct ContentView: View {
         .accessibilityIdentifier("tab-network")
     }
 
-    /// Choosing the Activity "tab" opens the activity list instead of switching tabs.
-    private var tabSelection: Binding<AppTab> {
-        Binding {
-            router.selectedTab
-        } set: { tab in
-            if tab == .activity {
-                router.showsActivities = true
-            } else {
-                router.selectedTab = tab
-            }
-        }
-    }
-
-    /// iPhone: the activity indicator sits in the tab bar, a progress ring with the number of
-    /// running activities. It shows once anything has run, until the list is cleared.
-    @TabContentBuilder<AppTab>
-    private var activityTab: some TabContent<AppTab> {
-        Tab(value: AppTab.activity) {
-            Color.clear
-        } label: {
-            Label {
-                Text("Activity")
-            } icon: {
-                Image(uiImage: ActivityRing.image(
-                    running: activities.runningCount,
-                    fraction: activities.overallFraction,
-                    phase: activities.spinnerPhase
-                ))
-            }
-        }
-        .customizationID("activity")
-        .accessibilityIdentifier("tab-activity")
-    }
-
     @TabContentBuilder<AppTab>
     private var settingsTab: some TabContent<AppTab> {
         Tab("Settings", systemImage: "gearshape", value: AppTab.settings) {
-            NavigationStack { SettingsView() }
+            NavigationStack {
+                SettingsView()
+                    .miniPlayerInset(showsPlayer: false)
+            }
         }
         .customizationID("settings")
         .accessibilityIdentifier("tab-settings")
@@ -430,29 +400,6 @@ extension FileTag {
             }
         }
         return image.withRenderingMode(.alwaysOriginal)
-    }
-}
-
-/// iPad: the activity indicator in the bottom corner; tap for the activity list.
-private struct ActivityFloatingButton: View {
-    @State private var isShowingList = false
-
-    var body: some View {
-        Button {
-            isShowingList = true
-        } label: {
-            ActivityRing(size: 28)
-                .frame(width: 52, height: 52)
-                .modifier(GlassCapsule())
-        }
-        .buttonStyle(.plain)
-        .padding(20)
-        .accessibilityLabel("Activity")
-        .accessibilityIdentifier("activityButton")
-        .popover(isPresented: $isShowingList) {
-            ActivitiesView()
-                .frame(minWidth: 380, minHeight: 420)
-        }
     }
 }
 
