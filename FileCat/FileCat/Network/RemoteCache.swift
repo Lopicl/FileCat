@@ -230,7 +230,6 @@ final class TransferCenter {
     private func startDownload(_ item: RemoteItem) -> Task<URL, Error> {
         if let task = running[item.id] { return task }
 
-        let offline = isPinned(item)
         let temporary = RemoteCache.temporaryURL(for: item.name)
         // SMB and NFS write the file front to back as it arrives; WebDAV hands it over at the end.
         let kind = sources.source(id: item.sourceID)?.kind
@@ -262,13 +261,15 @@ final class TransferCenter {
                     active.didWrite(bytes)
                     reporter.report(bytes)
                 }
-                let url = try RemoteCache.store(temporary, for: item, offline: offline)
+                // Checked at the end: Keep Offline may join a download that was already running.
+                let url = try RemoteCache.store(temporary, for: item, offline: self.isPinned(item))
                 active.finish(at: url)
                 ActivityCenter.shared.end(activityID)
                 return url
             } catch {
                 active.finish(at: nil)
-                ActivityCenter.shared.end(activityID, error: Task.isCancelled ? CancellationError() : error)
+                let error = Task.isCancelled ? CancellationError() : error
+                ActivityCenter.shared.end(activityID, error: error)
                 throw error
             }
         }
@@ -335,17 +336,27 @@ final class TransferCenter {
     func keepOffline(_ item: RemoteItem) async throws {
         pins[item.sourceID, default: []].insert(item.path)
         savePins()
-        try await sync(item)
+        do {
+            try await sync(item)
+        } catch is CancellationError where !item.isDirectory {
+            // Cancelling the download takes the file off the offline list again, so the next
+            // sync doesn't start it over.
+            unpin(item)
+            throw CancellationError()
+        }
     }
 
     func removeDownload(_ item: RemoteItem) {
-        if var paths = pins[item.sourceID] {
-            paths = paths.filter { $0 != item.path && !$0.hasPrefix(item.path == "/" ? "/" : item.path + "/") }
-            pins[item.sourceID] = paths.isEmpty ? nil : paths
-            savePins()
-        }
+        unpin(item)
         RemoteCache.removeLocalCopies(of: item)
         revision += 1
+    }
+
+    private func unpin(_ item: RemoteItem) {
+        guard var paths = pins[item.sourceID] else { return }
+        paths = paths.filter { $0 != item.path && !$0.hasPrefix(item.path == "/" ? "/" : item.path + "/") }
+        pins[item.sourceID] = paths.isEmpty ? nil : paths
+        savePins()
     }
 
     func removeAllOffline() {
@@ -383,7 +394,8 @@ final class TransferCenter {
         }
         if !target.isDirectory {
             if !RemoteCache.isOffline(target) {
-                try await download(target, offline: true)
+                // The shared download, so the viewer's and the activity list's Cancel reach it.
+                try await startDownload(target).value
             }
             return
         }
@@ -397,30 +409,11 @@ final class TransferCenter {
         }
         for entry in entries {
             try Task.checkCancellation()
-            try await sync(target.child(entry))
-        }
-        revision += 1
-    }
-
-    private func download(_ item: RemoteItem, offline: Bool) async throws {
-        let fileSystem = try await fileSystem(for: item.sourceID)
-        let temporary = RemoteCache.temporaryURL(for: item.name)
-        defer { try? FileManager.default.removeItem(at: temporary) }
-        let total = Double(max(item.size ?? 0, 1))
-        let activityID = ActivityCenter.shared.begin(.download, name: item.name)
-        let reporter = ProgressReporter { [weak self] bytes in
-            self?.progress[item.id] = min(1, Double(bytes) / total)
-            ActivityCenter.shared.update(activityID, fraction: Double(bytes) / total)
-        }
-        progress[item.id] = 0
-        defer { progress[item.id] = nil }
-        do {
-            try await fileSystem.download(item.path, to: temporary) { bytes in reporter.report(bytes) }
-            _ = try RemoteCache.store(temporary, for: item, offline: offline)
-            ActivityCenter.shared.end(activityID)
-        } catch {
-            ActivityCenter.shared.end(activityID, error: error)
-            throw error
+            do {
+                try await sync(target.child(entry))
+            } catch is CancellationError where !Task.isCancelled {
+                // The user cancelled this file's download; carry on with the rest of the folder.
+            }
         }
         revision += 1
     }

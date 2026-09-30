@@ -64,7 +64,8 @@ final class ActivityCenter {
         var ended: Date?
 
         var title: String {
-            "\(state == .running ? kind.verb : kind.pastTense) “\(name)”"
+            // "Copied", but "Copying" for one that was cancelled or failed.
+            "\(state == .finished ? kind.pastTense : kind.verb) “\(name)”"
         }
     }
 

@@ -24,12 +24,17 @@ private struct MiniPlayerInset: ViewModifier {
         let showsMiniPlayer = showsPlayer && player.current != nil && !isCovered
         let showsActivity = !usesSidebarLayout && !activities.activities.isEmpty && !isCovered
         content
+            // Screens that don't fill the height (the download placeholder) would otherwise carry
+            // the inset up with them, into the middle of the screen.
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 // Stacked so the two never overlap; lists scroll clear of both.
                 VStack(spacing: 0) {
                     if showsActivity {
                         ActivityFloatingButton()
-                            .padding(.trailing, 12)
+                            // Lines up with the right end of the tab bar's pill (21pt in on every
+                            // iPhone size).
+                            .padding(.trailing, 21)
                             .padding(.bottom, 8)
                             .frame(maxWidth: .infinity, alignment: .trailing)
                             .transition(.scale(scale: 0.6).combined(with: .opacity))

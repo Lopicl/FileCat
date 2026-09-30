@@ -97,6 +97,14 @@ private struct ActivityRow: View {
         }
         .padding(.vertical, 2)
         .accessibilityElement(children: .combine)
+        .swipeActions(edge: .trailing) {
+            if activity.state == .running, ActivityCenter.shared.canCancel(activity.id) {
+                Button("Cancel", systemImage: "xmark") {
+                    ActivityCenter.shared.cancel(activity.id)
+                }
+                .tint(.red)
+            }
+        }
     }
 
     /// "Done · 2:41 PM"
