@@ -203,31 +203,61 @@ final class ActivityCenter {
 /// Keeps one Live Activity in step with the activity center: started when work begins (Live
 /// Activities can only start in the foreground), updated at most twice a second, ended when
 /// everything is done.
+///
+/// iOS ignores Live Activity updates from an app that runs in the background only to play music,
+/// so once the background task runs out the work goes on but the Live Activity stops hearing about
+/// it. So each update carries an estimated finish the widget animates towards by itself, and is
+/// marked stale a little after it; coming back to the foreground brings everything up to date.
 @MainActor
 private final class LiveActivityController {
     private var activity: Activity<FileActivityAttributes>?
     private var lastUpdate = Date.distantPast
     private var pending: Task<Void, Never>?
+    /// Where the speed is measured from: the running activities, when, and their progress then.
+    private var baseline: (ids: [UUID], date: Date, fraction: Double)?
+    private weak var center: ActivityCenter?
+    private var observers: [NSObjectProtocol] = []
+
+    init() {
+        let notifications = NotificationCenter.default
+        observers.append(notifications.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.appBecameActive() }
+        })
+        observers.append(notifications.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
+            // Leave with the latest progress and estimate, while updates still get through.
+            MainActor.assumeIsolated { self?.updateNow() }
+        })
+    }
 
     func update(from center: ActivityCenter) {
+        self.center = center
         let running = center.running
         if running.isEmpty {
             pending?.cancel()
             pending = nil
+            baseline = nil
             end(center)
             return
         }
+        let fraction = center.overallFraction
         let state = FileActivityAttributes.ContentState(
             title: running.count == 1 ? running[0].title : "\(running.count) activities",
             symbol: running.count == 1 ? running[0].kind.symbol : "square.stack.3d.up",
             running: running.count,
-            fraction: center.overallFraction
+            fraction: fraction,
+            estimate: estimate(for: running.map(\.id), fraction: fraction)
         )
+        // Stale a little after the estimated finish, in case nothing more gets through.
+        let content = ActivityContent(state: state, staleDate: state.estimate.map { $0.upperBound + 10 })
+        if let current = activity, current.activityState == .dismissed || current.activityState == .ended {
+            // Swiped away; a new one starts the next time the app is in the foreground.
+            activity = nil
+        }
         if activity == nil {
             guard ActivityAuthorizationInfo().areActivitiesEnabled,
                   UIApplication.shared.applicationState == .active
             else { return }
-            activity = try? Activity.request(attributes: FileActivityAttributes(), content: .init(state: state, staleDate: nil))
+            activity = try? Activity.request(attributes: FileActivityAttributes(), content: content)
             lastUpdate = Date()
             return
         }
@@ -246,7 +276,41 @@ private final class LiveActivityController {
         }
         lastUpdate = Date()
         let current = activity
-        Task { await current?.update(.init(state: state, staleDate: nil)) }
+        Task { await current?.update(content) }
+    }
+
+    /// When progress would be at 0 and at 1, going at the speed it has had since the running
+    /// activities last changed; `nil` until that's been measured for a moment.
+    private func estimate(for ids: [UUID], fraction: Double?) -> ClosedRange<Date>? {
+        let now = Date()
+        guard let fraction else {
+            baseline = nil
+            return nil
+        }
+        guard let baseline, baseline.ids == ids, fraction >= baseline.fraction else {
+            baseline = (ids, now, fraction)
+            return nil
+        }
+        let elapsed = now.timeIntervalSince(baseline.date)
+        let speed = (fraction - baseline.fraction) / elapsed
+        guard elapsed >= 2, speed > 0 else { return nil }
+        return now.addingTimeInterval(-fraction / speed)...now.addingTimeInterval((1 - fraction) / speed)
+    }
+
+    private func updateNow() {
+        guard let center else { return }
+        lastUpdate = .distantPast
+        update(from: center)
+    }
+
+    /// Ends Live Activities whose end iOS ignored while the app was in the background (or left
+    /// over from before a relaunch), and starts or refreshes the one for work still running.
+    private func appBecameActive() {
+        for leftover in Activity<FileActivityAttributes>.activities
+        where leftover.id != activity?.id && (leftover.activityState == .active || leftover.activityState == .stale) {
+            Task { await leftover.end(nil, dismissalPolicy: .immediate) }
+        }
+        updateNow()
     }
 
     private func end(_ center: ActivityCenter) {

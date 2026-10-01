@@ -15,7 +15,7 @@ struct FileCatWidgets: WidgetBundle {
 struct FileActivityLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: FileActivityAttributes.self) { context in
-            LockScreenView(state: context.state)
+            LockScreenView(state: context.state, isStale: context.isStale)
                 .padding(16)
                 .activitySystemActionForegroundColor(.accentColor)
         } dynamicIsland: { context in
@@ -49,6 +49,8 @@ struct FileActivityLiveActivity: Widget {
 
 private struct LockScreenView: View {
     let state: FileActivityAttributes.ContentState
+    /// The app hasn't been heard from since around the estimated finish.
+    let isStale: Bool
 
     var body: some View {
         HStack(spacing: 14) {
@@ -59,18 +61,31 @@ private struct LockScreenView: View {
                         .font(.headline)
                         .lineLimit(1)
                     Spacer()
-                    if let fraction = state.fraction, state.running > 0 {
+                    if state.running > 0, let estimate = state.estimate, !isStale {
+                        // Counts down by itself, like the bar fills up by itself.
+                        Text(timerInterval: estimate, countsDown: true)
+                            .font(.subheadline.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.trailing)
+                            .frame(maxWidth: 70, alignment: .trailing)
+                    } else if let fraction = state.fraction, state.running > 0 {
                         Text(fraction, format: .percent.precision(.fractionLength(0)))
                             .font(.subheadline.monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
                 }
                 ProgressBar(state: state)
-                Text(state.running == 0 ? "Done" : state.running == 1 ? "1 activity in FileCat" : "\(state.running) activities in FileCat")
+                Text(subtitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    private var subtitle: String {
+        if state.running == 0 { return "Done" }
+        if isStale { return "Open FileCat for the latest progress" }
+        return state.running == 1 ? "1 activity in FileCat" : "\(state.running) activities in FileCat"
     }
 }
 
@@ -78,7 +93,14 @@ private struct ProgressBar: View {
     let state: FileActivityAttributes.ContentState
 
     var body: some View {
-        if let fraction = state.fraction {
+        if state.running > 0, let estimate = state.estimate {
+            ProgressView(timerInterval: estimate, countsDown: false) {
+                EmptyView()
+            } currentValueLabel: {
+                EmptyView()
+            }
+            .tint(.accentColor)
+        } else if let fraction = state.fraction {
             ProgressView(value: fraction)
                 .tint(.accentColor)
         } else {
@@ -96,12 +118,23 @@ private struct ProgressRing: View {
 
     var body: some View {
         ZStack {
-            Circle()
-                .stroke(Color.primary.opacity(0.2), lineWidth: size * 0.1)
-            Circle()
-                .trim(from: 0, to: state.running == 0 ? 1 : max(0.04, state.fraction ?? 0.25))
-                .stroke(Color.accentColor, style: StrokeStyle(lineWidth: size * 0.1, lineCap: .round))
-                .rotationEffect(.degrees(-90))
+            if state.running > 0, let estimate = state.estimate {
+                // Fills up by itself towards the estimated finish.
+                ProgressView(timerInterval: estimate, countsDown: false) {
+                    EmptyView()
+                } currentValueLabel: {
+                    EmptyView()
+                }
+                .progressViewStyle(.circular)
+                .tint(.accentColor)
+            } else {
+                Circle()
+                    .stroke(Color.primary.opacity(0.2), lineWidth: size * 0.1)
+                Circle()
+                    .trim(from: 0, to: state.running == 0 ? 1 : max(0.04, state.fraction ?? 0.25))
+                    .stroke(Color.accentColor, style: StrokeStyle(lineWidth: size * 0.1, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+            }
             if state.running > 1 {
                 Text("\(state.running)")
                     .font(.system(size: size * 0.42, weight: .bold, design: .rounded))

@@ -14,12 +14,17 @@ public struct FileActivityAttributes: ActivityAttributes {
         public var running: Int
         /// Overall progress (0...1), or `nil` when it isn't known.
         public var fraction: Double?
+        /// When progress would have been 0 and 1 at the current speed, if it's known. The widget
+        /// animates progress across this range by itself, because iOS ignores the app's updates
+        /// while it runs in the background only for music playback.
+        public var estimate: ClosedRange<Date>?
 
-        public init(title: String, symbol: String, running: Int, fraction: Double?) {
+        public init(title: String, symbol: String, running: Int, fraction: Double?, estimate: ClosedRange<Date>? = nil) {
             self.title = title
             self.symbol = symbol
             self.running = running
             self.fraction = fraction
+            self.estimate = estimate
         }
     }
 
