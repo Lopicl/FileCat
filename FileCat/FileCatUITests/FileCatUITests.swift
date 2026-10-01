@@ -756,6 +756,24 @@ final class FileCatUITests: XCTestCase {
         XCTAssertEqual(cat.value as? String, "1", "A long pull past the end meows once")
     }
 
+    func testLongCatRunsDownToTheTabBarPastTheActivityButton() throws {
+        guard UIDevice.current.userInterfaceIdiom == .phone else {
+            throw XCTSkip("On iPad the activity button floats in the window's corner")
+        }
+        app.terminate()
+        app.launchArguments = ["-FileCatUITestReset", "YES", "-FileCatDemoActivity", "30"]
+        app.launch()
+        let indicator = app.buttons["activityButton"].firstMatch
+        XCTAssertTrue(indicator.waitForExistence(timeout: 10))
+        openTab("settings")
+        for _ in 0..<5 { app.swipeUp() }
+        let cat = app.descendants(matching: .any)["longCat"]
+        XCTAssertTrue(cat.waitForExistence(timeout: 3))
+        XCTAssertTrue(indicator.exists, "The activity button shows in Settings")
+        XCTAssertGreaterThan(cat.frame.maxY, indicator.frame.midY,
+                             "The list ends at the tab bar, not above the activity button")
+    }
+
     func testCompanionAppsListsMusiCat() {
         openTab("settings")
         let row = app.buttons["Companion Apps"].firstMatch

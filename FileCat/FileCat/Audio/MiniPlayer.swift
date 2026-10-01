@@ -30,14 +30,8 @@ private struct MiniPlayerInset: ViewModifier {
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 // Stacked so the two never overlap; lists scroll clear of both.
                 VStack(spacing: 0) {
-                    if showsActivity {
-                        ActivityFloatingButton()
-                            // Lines up with the right end of the tab bar's pill (21pt in on every
-                            // iPhone size).
-                            .padding(.trailing, 21)
-                            .padding(.bottom, 8)
-                            .frame(maxWidth: .infinity, alignment: .trailing)
-                            .transition(.scale(scale: 0.6).combined(with: .opacity))
+                    if showsActivity && showsPlayer {
+                        activityButton
                     }
                     if showsMiniPlayer {
                         MiniPlayer { router.showsNowPlaying = true }
@@ -45,8 +39,24 @@ private struct MiniPlayerInset: ViewModifier {
                     }
                 }
             }
+            .overlay(alignment: .bottom) {
+                // Without the player (Settings) the button floats over the screen instead of
+                // insetting it, so the long cat at the end still runs down to the tab bar.
+                if showsActivity && !showsPlayer {
+                    activityButton
+                }
+            }
             .animation(.snappy, value: showsMiniPlayer)
             .animation(.snappy, value: showsActivity)
+    }
+
+    private var activityButton: some View {
+        ActivityFloatingButton()
+            // Lines up with the right end of the tab bar's pill (21pt in on every iPhone size).
+            .padding(.trailing, 21)
+            .padding(.bottom, 8)
+            .frame(maxWidth: .infinity, alignment: .trailing)
+            .transition(.scale(scale: 0.6).combined(with: .opacity))
     }
 }
 
