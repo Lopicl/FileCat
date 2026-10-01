@@ -34,7 +34,10 @@ struct NowPlayingView: View {
                     .ignoresSafeArea()
             }
         }
+        .presentationDetents(verticalSizeClass == .compact ? [.custom(LandscapeDetent.self)] : [.large])
+        .modifier(OpaqueInLandscape(isLandscape: verticalSizeClass == .compact))
         .presentationDragIndicator(.visible)
+        .background(EdgeAttachedSheet())
         .sheet(isPresented: $showsEqualizer) {
             EqualizerView()
         }
@@ -192,6 +195,67 @@ func formatTime(_ seconds: Double) -> String {
     return hours > 0
         ? String(format: "%d:%02d:%02d", hours, minutes, secs)
         : String(format: "%d:%02d", minutes, secs)
+}
+
+/// Keeps the sheet a card that slides up from the bottom when an iPhone is in landscape,
+/// like in portrait. Without this, iOS turns a sheet into a full-screen cover in compact height.
+/// A plain view rather than a view controller, so SwiftUI doesn't present the equalizer from it.
+private struct EdgeAttachedSheet: UIViewRepresentable {
+    func makeUIView(context: Context) -> Probe { Probe() }
+    func updateUIView(_ view: Probe, context: Context) {
+        view.configure()
+    }
+
+    final class Probe: UIView {
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            isUserInteractionEnabled = false
+            registerForTraitChanges([UITraitVerticalSizeClass.self]) { (view: Probe, _) in view.configure() }
+        }
+
+        required init?(coder: NSCoder) { fatalError() }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            configure()
+        }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            configure()
+        }
+
+        /// SwiftUI resets these when it updates the sheet (on rotation, say), so set them again.
+        func configure() {
+            var responder = next
+            while let current = responder, !(current is UIViewController) { responder = current.next }
+            guard let sheet = (responder as? UIViewController)?.sheetPresentationController,
+                  !sheet.prefersEdgeAttachedInCompactHeight else { return }
+            sheet.prefersEdgeAttachedInCompactHeight = true
+            sheet.widthFollowsPreferredContentSizeWhenEdgeAttached = false
+        }
+    }
+}
+
+/// In landscape the large detent reaches the top of the screen and hides the grabber;
+/// stop a little short so the sheet reads as one, like in portrait.
+private struct LandscapeDetent: CustomPresentationDetent {
+    static func height(in context: Context) -> CGFloat? {
+        context.maxDetentValue - 20
+    }
+}
+
+/// Sheets shorter than the large detent turn see-through; keep the landscape one solid like portrait.
+private struct OpaqueInLandscape: ViewModifier {
+    let isLandscape: Bool
+
+    func body(content: Content) -> some View {
+        if isLandscape {
+            content.presentationBackground(Color(.systemBackground))
+        } else {
+            content
+        }
+    }
 }
 
 /// AirPlay / Bluetooth output picker.

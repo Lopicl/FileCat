@@ -554,6 +554,21 @@ final class FileCatUITests: XCTestCase {
         XCTAssertLessThan(title.frame.midX, width / 2, "Title is on the left half")
         XCTAssertGreaterThan(playPause.frame.midX, width / 2, "Controls are on the right half")
         XCTAssertLessThan(abs(title.frame.midY - playPause.frame.midY), app.frame.height / 2, "Side by side, not stacked")
+
+        // Still a sheet with its grabber on screen, not a full-screen cover, so it swipes away.
+        let grabber = app.buttons["Sheet Grabber"]
+        XCTAssertTrue(grabber.exists, "The player keeps its pull indicator")
+        XCTAssertGreaterThanOrEqual(grabber.frame.minY, 0, "The grabber isn't pushed off the top")
+        let window: XCUIElement = app
+        window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1))
+            .press(forDuration: 0.1, thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.98)))
+        XCTAssertTrue(waitForDisappearance(playPause), "Swiping down closes the player")
+        XCTAssertTrue(app.otherElements["miniPlayer"].waitForExistence(timeout: 3))
+
+        XCUIDevice.shared.orientation = .portrait
+        app.otherElements["miniPlayer"].tap()
+        XCTAssertTrue(playPause.waitForExistence(timeout: 5))
+        XCTAssertGreaterThan(app.buttons["Sheet Grabber"].frame.minY, 0, "Portrait is unchanged")
     }
 
     // MARK: Connections, archives, text editing
