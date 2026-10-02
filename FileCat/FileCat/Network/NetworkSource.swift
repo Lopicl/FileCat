@@ -19,17 +19,6 @@ struct NetworkSource: Codable, Identifiable, Hashable, Sendable {
             }
         }
 
-        var subtitle: String {
-            switch self {
-            case .smb: "Windows, macOS, Linux (Samba) and most NAS"
-            case .nfs: "Linux and NAS exports (NFS version 3)"
-            case .webdav: "Web servers, NAS, ownCloud, many cloud services"
-            case .nextcloud: "Sign in with your Nextcloud account"
-            case .sftp: "Files over SSH: Linux, macOS, NAS and web hosting"
-            case .ftp: "Older NAS, routers and web hosting (FTP and FTPS)"
-            }
-        }
-
         var systemImage: String {
             switch self {
             case .smb: "server.rack"

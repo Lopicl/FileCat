@@ -208,9 +208,7 @@ private struct LocationTitle: ViewModifier {
                 Button {
                     router.serverEditor = ServerEditorRequest(source: NetworkSource(kind: kind, name: "", host: ""), isNew: true)
                 } label: {
-                    Text(kind.title)
-                    Text(kind.subtitle)
-                    Image(systemName: kind.systemImage)
+                    Label(kind.title, systemImage: kind.systemImage)
                 }
             }
             Button {
