@@ -44,6 +44,26 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section {
+                // Opens the same list as the floating activity button, which only shows once
+                // something has run.
+                Button {
+                    router.showsActivities = true
+                } label: {
+                    LabeledContent {
+                        Text(activitySummary)
+                    } label: {
+                        Label("View Activity", systemImage: "clock.arrow.circlepath")
+                            .foregroundStyle(Color.primary)
+                    }
+                }
+                .accessibilityIdentifier("settingsActivity")
+            } header: {
+                Text("Activity")
+            } footer: {
+                Text("Copies, moves, downloads, uploads and extractions, running and recent.")
+            }
+
+            Section {
                 Toggle("Tags", isOn: $tagsEnabled.animation())
                     .accessibilityIdentifier("tagsEnabled")
                 if tagsEnabled {
@@ -83,24 +103,6 @@ struct SettingsView: View {
                 Text("Photos & Videos")
             } footer: {
                 Text("Applies to videos shown in the photo and video gallery. Unmuting a video pauses the music player.")
-            }
-
-            Section {
-                // Opens the same list as the floating activity button, which only shows once
-                // something has run.
-                Button {
-                    router.showsActivities = true
-                } label: {
-                    LabeledContent {
-                        Text(activitySummary)
-                    } label: {
-                        Label("Activity", systemImage: "clock.arrow.circlepath")
-                            .foregroundStyle(Color.primary)
-                    }
-                }
-                .accessibilityIdentifier("settingsActivity")
-            } footer: {
-                Text("Copies, moves, downloads, uploads and extractions, running and recent.")
             }
 
             Section {
