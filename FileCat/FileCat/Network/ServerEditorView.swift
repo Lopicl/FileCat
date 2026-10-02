@@ -16,6 +16,8 @@ struct ServerEditorView: View {
     @State private var isConnecting = false
     @State private var errorMessage: String?
     @State private var untrusted: (fingerprint: String, summary: String)?
+    @State private var hostKey: (fingerprint: String, keyType: String, changed: Bool)?
+    @State private var copiedKey = false
     @State private var shares: [String]?
     @State private var isLoadingShares = false
     @State private var nextcloudLogin: NextcloudLogin.Session?
@@ -58,6 +60,10 @@ struct ServerEditorView: View {
                     nextcloudSection
                 }
 
+                if kind == .sftp || kind == .ftp {
+                    folderSection
+                }
+
                 if kind != .nfs {
                     Section {
                         TextField(kind == .nextcloud ? "Login Name" : "User Name", text: $source.username)
@@ -71,6 +77,10 @@ struct ServerEditorView: View {
                     } footer: {
                         Text(accountFooter)
                     }
+                }
+
+                if kind == .sftp {
+                    sshKeySection
                 }
 
                 Section("Advanced") {
@@ -88,7 +98,7 @@ struct ServerEditorView: View {
                             .keyboardType(.numberPad)
                     }
                     if source.trustedCertificate != nil {
-                        Button("Stop Trusting Certificate", role: .destructive) {
+                        Button(kind == .sftp ? "Forget Server Key" : "Stop Trusting Certificate", role: .destructive) {
                             source.trustedCertificate = nil
                         }
                     }
@@ -128,6 +138,23 @@ struct ServerEditorView: View {
             } message: {
                 Text("“\(untrusted?.summary ?? "")” isn't signed by a trusted authority. This is normal for NAS devices and home servers with their own certificate. Only continue if this is your server.\n\nSHA-256: \(untrusted?.fingerprint ?? "")")
             }
+            .alert(hostKey?.changed == true ? "Server Identity Changed" : "Trust This Server?", isPresented: Binding(isPresenting: Binding(
+                get: { hostKey.map { _ in true } },
+                set: { if $0 == nil { hostKey = nil } }
+            ))) {
+                Button(hostKey?.changed == true ? "Trust New Key" : "Trust and Connect", role: hostKey?.changed == true ? .destructive : nil) {
+                    source.trustedCertificate = hostKey?.fingerprint
+                    hostKey = nil
+                    Task { await save() }
+                }
+                Button("Cancel", role: .cancel) { hostKey = nil }
+            } message: {
+                if hostKey?.changed == true {
+                    Text("The key of “\(edited.hostName)” isn't the one you trusted before. That's expected after reinstalling or replacing the server, but it can also mean someone is intercepting the connection.\n\nNew \(hostKey?.keyType ?? "") key:\n\(hostKey?.fingerprint ?? "")")
+                } else {
+                    Text("FileCat hasn't connected to “\(edited.hostName)” before. To be sure it's your server, check that its key matches (ssh-keygen -lf on the server shows it).\n\n\(hostKey?.keyType ?? "") key:\n\(hostKey?.fingerprint ?? "")")
+                }
+            }
             .sheet(item: $nextcloudLogin, onDismiss: {
                 // Closing the sign-in page before finishing stops waiting for it.
                 if isWaitingForLogin { loginTask?.cancel() }
@@ -137,6 +164,9 @@ struct ServerEditorView: View {
             }
         }
         .interactiveDismissDisabled(isConnecting)
+        // A different server has a different key or certificate.
+        .onChange(of: source.host) { forgetTrustedServer() }
+        .onChange(of: portText) { forgetTrustedServer() }
     }
 
     // MARK: Sections
@@ -180,6 +210,37 @@ struct ServerEditorView: View {
         }
     }
 
+    private var folderSection: some View {
+        Section {
+            TextField(kind == .sftp ? "Folder (e.g. /volume1/media)" : "Folder (e.g. /pub)", text: $source.path)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .accessibilityIdentifier("serverFolder")
+        } header: {
+            Text("Folder")
+        } footer: {
+            Text(kind == .sftp
+                 ? "Optional. Leave empty to start in your home folder."
+                 : "Optional. Leave empty to start in the folder the server opens.")
+        }
+    }
+
+    private var sshKeySection: some View {
+        Section {
+            Button {
+                UIPasteboard.general.string = SSHClientKey.authorizedKeysLine(of: SSHClientKey.load())
+                copiedKey = true
+            } label: {
+                Label(copiedKey ? "Copied" : "Copy FileCat's Public Key", systemImage: copiedKey ? "checkmark" : "key")
+            }
+            .accessibilityIdentifier("copySSHKey")
+        } header: {
+            Text("SSH Key")
+        } footer: {
+            Text("To sign in without a password, add this key to ~/.ssh/authorized_keys on the server. FileCat tries it before the password.")
+        }
+    }
+
     @ViewBuilder
     private var nextcloudSection: some View {
         Section {
@@ -206,7 +267,7 @@ struct ServerEditorView: View {
 
     private var hostPrompt: String {
         switch kind {
-        case .smb, .nfs: "Host Name or IP Address"
+        case .smb, .nfs, .sftp, .ftp: "Host Name or IP Address"
         case .webdav: "https://example.com/dav/"
         case .nextcloud: "https://cloud.example.com"
         }
@@ -218,6 +279,8 @@ struct ServerEditorView: View {
         case .nfs: "FileCat uses NFS version 3 over TCP."
         case .webdav: "The full address of the WebDAV folder. Addresses starting with http:// aren't encrypted."
         case .nextcloud: "The address you use to open Nextcloud in a browser."
+        case .sftp: "For example nas.local or 192.168.1.20: the address you'd use with ssh."
+        case .ftp: "For example nas.local or ftp.example.com. FileCat encrypts the connection when the server supports it (FTPS). For servers with implicit TLS, start with ftps://."
         }
     }
 
@@ -229,6 +292,7 @@ struct ServerEditorView: View {
     private var accountFooter: String {
         switch kind {
         case .smb: "Leave both empty to connect as a guest."
+        case .ftp: "Leave both empty to sign in anonymously."
         case .nextcloud: "Create an app password in Nextcloud under Settings → Security if you'd rather not sign in above."
         default: ""
         }
@@ -251,6 +315,10 @@ struct ServerEditorView: View {
         return source
     }
 
+    private func forgetTrustedServer() {
+        if kind == .sftp || kind == .ftp { source.trustedCertificate = nil }
+    }
+
     private var effectivePassword: String {
         !request.isNew && password.isEmpty ? request.source.password : password
     }
@@ -266,6 +334,8 @@ struct ServerEditorView: View {
             dismiss()
         } catch RemoteError.untrustedCertificate(let fingerprint, let summary) {
             untrusted = (fingerprint, summary)
+        } catch RemoteError.untrustedHostKey(let fingerprint, let keyType, let changed) {
+            hostKey = (fingerprint, keyType, changed)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -316,6 +386,9 @@ struct ServerEditorView: View {
             return "\(source.host):\(source.path.isEmpty ? "/" : source.path)"
         case .webdav, .nextcloud:
             return URLComponents(string: source.host.contains("://") ? source.host : "https://" + source.host)?.host ?? source.host
+        case .sftp, .ftp:
+            let folder = RemotePath.components(of: source.path).last
+            return folder.map { "\($0) on \(source.hostName)" } ?? source.hostName
         }
     }
 }

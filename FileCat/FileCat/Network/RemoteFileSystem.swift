@@ -19,6 +19,9 @@ enum RemoteError: LocalizedError, Equatable {
     case unsupported(String)
     /// A self-signed or otherwise untrusted HTTPS certificate. The user can choose to trust it.
     case untrustedCertificate(fingerprint: String, summary: String)
+    /// An SSH server FileCat hasn't connected to before, or whose key changed since. The user
+    /// can choose to trust it.
+    case untrustedHostKey(fingerprint: String, keyType: String, changed: Bool)
     case timedOut
 
     var errorDescription: String? {
@@ -41,6 +44,10 @@ enum RemoteError: LocalizedError, Equatable {
             reason
         case .untrustedCertificate(_, let summary):
             "The server's certificate isn't trusted (\(summary))."
+        case .untrustedHostKey(_, _, let changed):
+            changed
+                ? "The server's identity has changed since you last connected. Edit the server to check its new key."
+                : "FileCat hasn't connected to this server before. Edit the server to check its key."
         case .timedOut:
             "The server stopped responding."
         }
@@ -165,6 +172,10 @@ actor RemoteConnections {
             return try await SMBFileSystem.connect(source: source, password: password)
         case .nfs:
             return try await NFSFileSystem.connect(source: source)
+        case .sftp:
+            return try await SFTPFileSystem.connect(source: source, password: password)
+        case .ftp:
+            return try await FTPFileSystem.connect(source: source, password: password)
         }
     }
 }

@@ -6,8 +6,10 @@ import XCTest
 /// - WebDAV: rclone on 127.0.0.1:8081 (user `test`, password `secret`)
 /// - SMB: Samba on 127.0.0.1:4451, share `Media` (user and password from `Tools/protocol-tests`)
 /// - NFS: rclone on 127.0.0.1:12049, export `/`
+/// - SFTP: rclone on 127.0.0.1:2222 (user `test`, password `secret`)
+/// - FTPS: `ftp_server.py` on 127.0.0.1:2991 (explicit TLS, self-signed; user `test`, password `secret`)
 ///
-/// All three share the folder created by `servers.sh`, which holds `hello.txt`, `Music/` and `Photos/`.
+/// All of them share the folder created by `servers.sh`, which holds `hello.txt`, `Music/` and `Photos/`.
 final class NetworkUITests: XCTestCase {
     private var app: XCUIApplication!
 
@@ -160,6 +162,79 @@ final class NetworkUITests: XCTestCase {
         XCTAssertTrue(playing.waitForExistence(timeout: 15), "The song plays (streamed)")
     }
 
+    func testSFTPTrustServerKeyBrowseAndPlay() throws {
+        try requireServer(port: 2222)
+        openTab("network")
+        app.buttons["addServerMenu"].tap()
+        menuItem("SFTP").tap()
+        type("serverHost", "127.0.0.1")
+        type("serverUser", "test")
+        type("serverPassword", "secret")
+        let copyKey = app.buttons["copySSHKey"]
+        for _ in 0..<3 where !copyKey.isHittable { app.swipeUp() }
+        copyKey.tap()
+        XCTAssertTrue(app.buttons["Copied"].waitForExistence(timeout: 3), "FileCat's SSH key is copied")
+        setPort("2222")
+        app.buttons["saveServer"].tap()
+
+        // The first connection asks to trust the server's key.
+        let trust = app.alerts["Trust This Server?"]
+        XCTAssertTrue(trust.waitForExistence(timeout: 15))
+        XCTAssertTrue(trust.staticTexts.matching(NSPredicate(format: "label CONTAINS 'SHA256:'")).firstMatch.exists)
+        trust.buttons["Trust and Connect"].tap()
+        dismissPasswordPrompt()
+
+        openServer("127.0.0.1")
+        XCTAssertTrue(app.staticTexts["hello.txt"].waitForExistence(timeout: 10))
+        app.staticTexts["hello.txt"].tap()
+        app.buttons["downloadFile"].firstMatch.tap()
+        XCTAssertTrue(app.textViews.firstMatch.waitForExistence(timeout: 10))
+        XCTAssertEqual(app.textViews.firstMatch.value as? String, "hello over the network\n")
+        goBack()
+
+        app.staticTexts["Music"].tap()
+        let track = app.staticTexts.matching(NSPredicate(format: "label ENDSWITH '.m4a' OR label ENDSWITH '.wav'")).firstMatch
+        XCTAssertTrue(track.waitForExistence(timeout: 10))
+        track.tap()
+        XCTAssertTrue(app.buttons["nowPlayingPlayPause"].waitForExistence(timeout: 15), "Music from the server plays")
+        let playing = app.staticTexts.matching(NSPredicate(format: "label MATCHES '^0:0[1-9]$'")).firstMatch
+        XCTAssertTrue(playing.waitForExistence(timeout: 15), "The song plays (streamed)")
+    }
+
+    func testFTPSTrustCertificateBrowseAndManage() throws {
+        try requireServer(port: 2991)
+        addServer("FTP", host: "127.0.0.1", user: "test", password: "secret", port: "2991", expectSuccess: false)
+
+        // The test server's certificate is self-signed.
+        let trust = app.alerts["Trust This Certificate?"]
+        XCTAssertTrue(trust.waitForExistence(timeout: 15))
+        trust.buttons["Trust and Connect"].tap()
+        dismissPasswordPrompt()
+
+        openServer("127.0.0.1")
+        XCTAssertTrue(app.staticTexts["hello.txt"].waitForExistence(timeout: 10))
+        app.staticTexts["hello.txt"].tap()
+        app.buttons["downloadFile"].firstMatch.tap()
+        XCTAssertTrue(app.textViews.firstMatch.waitForExistence(timeout: 10))
+        XCTAssertEqual(app.textViews.firstMatch.value as? String, "hello over the network\n")
+        goBack()
+
+        openAddMenu("Create Folder")
+        let alert = app.alerts["New Folder"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 3))
+        replaceText(in: alert.textFields.firstMatch, with: "FTP Test Folder")
+        alert.buttons["Create"].tap()
+        if !waitForDisappearance(alert, timeout: 2) { alert.buttons["Create"].tap() }
+        XCTAssertTrue(app.staticTexts["FTP Test Folder"].waitForExistence(timeout: 10))
+
+        app.staticTexts["FTP Test Folder"].press(forDuration: 1.2)
+        app.buttons["Delete"].firstMatch.tap()
+        let confirm = app.alerts.firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 3))
+        confirm.buttons["Delete"].tap()
+        XCTAssertTrue(waitForDisappearance(app.staticTexts["FTP Test Folder"], timeout: 10))
+    }
+
     /// MusiCat asks for FileCat's servers, FileCat asks the user, and MusiCat then plays music
     /// from the server. Needs MusiCat installed on the simulator.
     /// FileCat and MusiCat share an App Group: each records itself there at launch and reads what
@@ -211,8 +286,10 @@ final class NetworkUITests: XCTestCase {
             throw XCTSkip("MusiCat isn't installed on this simulator.")
         }
         musiCat.tabBars.buttons["Settings"].tap()
+        // It sits below the Shared Storage section, so scroll down to it.
         let importButton = musiCat.buttons["importServers"]
-        XCTAssertTrue(importButton.waitForExistence(timeout: 5))
+        for _ in 0..<4 where !(importButton.waitForExistence(timeout: 2) && importButton.isHittable) { musiCat.swipeUp() }
+        XCTAssertTrue(importButton.isHittable)
         importButton.tap()
 
         // FileCat asks first.
@@ -341,13 +418,14 @@ final class NetworkUITests: XCTestCase {
         return (environment["FILECAT_SMB_USER"] ?? "lopicl", environment["FILECAT_SMB_PASSWORD"] ?? "secret")
     }
 
-    private func addServer(_ kind: String, host: String, user: String, password: String, expectSuccess: Bool = true) {
+    private func addServer(_ kind: String, host: String, user: String, password: String, port: String? = nil, expectSuccess: Bool = true) {
         openTab("network")
         app.buttons["addServerMenu"].tap()
         menuItem(kind).tap()
         type("serverHost", host)
         type("serverUser", user)
         type("serverPassword", password)
+        if let port { setPort(port) }
         app.buttons["saveServer"].tap()
         if expectSuccess { dismissPasswordPrompt() }
     }

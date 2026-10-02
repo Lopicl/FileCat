@@ -231,9 +231,9 @@ final class TransferCenter {
         if let task = running[item.id] { return task }
 
         let temporary = RemoteCache.temporaryURL(for: item.name)
-        // SMB and NFS write the file front to back as it arrives; WebDAV hands it over at the end.
+        // SMB, NFS, SFTP and FTP write the file front to back as it arrives; WebDAV hands it over at the end.
         let kind = sources.source(id: item.sourceID)?.kind
-        let active = ActiveDownload(temporaryURL: temporary, isProgressive: kind == .smb || kind == .nfs)
+        let active = ActiveDownload(temporaryURL: temporary, isProgressive: kind.map { ![.webdav, .nextcloud].contains($0) } ?? false)
         let activityID = ActivityCenter.shared.begin(.download, name: item.name) { [weak self] in
             self?.cancelDownload(of: item)
         }

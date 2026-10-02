@@ -40,6 +40,8 @@
 		<string>_nfs._tcp</string>
 		<string>_webdav._tcp</string>
 		<string>_webdavs._tcp</string>
+		<string>_sftp-ssh._tcp</string>
+		<string>_ftp._tcp</string>
 	</array>
 	<key>UIBackgroundModes</key>
 	<array>

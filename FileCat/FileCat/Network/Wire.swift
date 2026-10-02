@@ -176,6 +176,14 @@ final class TCPConnection: @unchecked Sendable {
         }
     }
 
+    /// Queues `data` right away without waiting for it to go out, so that callers on an actor
+    /// keep their messages in order. `completion` gets the error if sending fails.
+    func enqueue(_ data: Data, completion: @escaping @Sendable (Error?) -> Void) {
+        connection.send(content: data, completion: .contentProcessed { error in
+            completion(error.map { RemoteError.connectionFailed(Self.describe($0)) })
+        })
+    }
+
     /// Waits for exactly `count` bytes.
     func receive(exactly count: Int) async throws -> Data {
         var buffer = Data(capacity: count)

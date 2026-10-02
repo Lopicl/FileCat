@@ -56,7 +56,7 @@ struct NetworkView: View {
                     ContentUnavailableView {
                         Label("No Connections", systemImage: "network")
                     } description: {
-                        Text("Tap + to connect to an SMB, NFS, WebDAV or Nextcloud server, or to add a folder from the Files app.")
+                        Text("Tap + to connect to an SMB, NFS, WebDAV, Nextcloud, SFTP or FTP server, or to add a folder from the Files app.")
                     }
                     .listRowBackground(Color.clear)
                 }

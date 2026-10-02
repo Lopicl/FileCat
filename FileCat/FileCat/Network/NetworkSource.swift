@@ -4,7 +4,7 @@ import Security
 /// A saved server. The password lives in the keychain, everything else in `UserDefaults`.
 struct NetworkSource: Codable, Identifiable, Hashable, Sendable {
     enum Kind: String, Codable, CaseIterable, Identifiable, Sendable {
-        case smb, nfs, webdav, nextcloud
+        case smb, nfs, webdav, nextcloud, sftp, ftp
 
         var id: String { rawValue }
 
@@ -14,6 +14,8 @@ struct NetworkSource: Codable, Identifiable, Hashable, Sendable {
             case .nfs: "NFS"
             case .webdav: "WebDAV"
             case .nextcloud: "Nextcloud"
+            case .sftp: "SFTP"
+            case .ftp: "FTP"
             }
         }
 
@@ -23,6 +25,8 @@ struct NetworkSource: Codable, Identifiable, Hashable, Sendable {
             case .nfs: "Linux and NAS exports (NFS version 3)"
             case .webdav: "Web servers, NAS, ownCloud, many cloud services"
             case .nextcloud: "Sign in with your Nextcloud account"
+            case .sftp: "Files over SSH: Linux, macOS, NAS and web hosting"
+            case .ftp: "Older NAS, routers and web hosting (FTP and FTPS)"
             }
         }
 
@@ -32,6 +36,8 @@ struct NetworkSource: Codable, Identifiable, Hashable, Sendable {
             case .nfs: "externaldrive.connected.to.line.below"
             case .webdav: "globe"
             case .nextcloud: "cloud"
+            case .sftp: "lock.rectangle.stack"
+            case .ftp: "arrow.up.arrow.down.circle"
             }
         }
 
@@ -40,6 +46,8 @@ struct NetworkSource: Codable, Identifiable, Hashable, Sendable {
             case .smb: 445
             case .nfs: 2049
             case .webdav, .nextcloud: 443
+            case .sftp: 22
+            case .ftp: 21
             }
         }
     }
@@ -47,11 +55,12 @@ struct NetworkSource: Codable, Identifiable, Hashable, Sendable {
     var id = UUID().uuidString
     var kind: Kind
     var name: String
-    /// Host name or IP address for SMB and NFS; the full server URL for WebDAV and Nextcloud.
+    /// Host name or IP address for SMB, NFS, SFTP and FTP; the full server URL for WebDAV and Nextcloud.
     var host: String
     /// Only set when the server doesn't use the protocol's usual port.
     var port: Int?
     /// SMB: share name, optionally followed by a folder ("Media/Music"). NFS: export path.
+    /// SFTP and FTP: the folder to start in (empty for the home folder).
     var path = ""
     var username = ""
     /// SMB only; usually empty.
@@ -59,7 +68,8 @@ struct NetworkSource: Codable, Identifiable, Hashable, Sendable {
     /// NFS only: the user and group IDs sent to the server.
     var uid: Int?
     var gid: Int?
-    /// SHA-256 fingerprint of a self-signed certificate the user chose to trust.
+    /// SHA-256 fingerprint of a self-signed certificate the user chose to trust. SFTP: the
+    /// fingerprint of the server's host key ("SHA256:…"), as OpenSSH shows it.
     var trustedCertificate: String?
     /// When the password was last changed, so companion apps that imported the server know to
     /// ask FileCat for it again. Whole seconds, to survive the ISO 8601 manifest.
@@ -74,7 +84,26 @@ struct NetworkSource: Codable, Identifiable, Hashable, Sendable {
             return "nfs://\(host)\(port.map { ":\($0)" } ?? "")\(path.hasPrefix("/") ? path : "/" + path)"
         case .webdav, .nextcloud:
             return host
+        case .sftp, .ftp:
+            let user = username.isEmpty ? "" : username + "@"
+            let folder = path.isEmpty ? "" : (path.hasPrefix("/") ? path : "/" + path)
+            let scheme = usesImplicitTLS && port != 990 ? "ftps" : kind.rawValue
+            return "\(scheme)://\(user)\(hostName)\(port.map { ":\($0)" } ?? "")\(folder)"
         }
+    }
+
+    /// SFTP and FTP: the host name without the "sftp://", "ftp://" or "ftps://" people may type.
+    var hostName: String {
+        var text = host.trimmingCharacters(in: .whitespaces)
+        if let scheme = text.range(of: "://") { text = String(text[scheme.upperBound...]) }
+        if let slash = text.firstIndex(of: "/") { text = String(text[..<slash]) }
+        if let at = text.lastIndex(of: "@") { text = String(text[text.index(after: at)...]) }
+        return text
+    }
+
+    /// FTP with TLS from the start rather than after AUTH TLS: "ftps://" addresses and port 990.
+    var usesImplicitTLS: Bool {
+        kind == .ftp && (host.lowercased().hasPrefix("ftps://") || port == 990)
     }
 
     /// The WebDAV root for WebDAV and Nextcloud sources.

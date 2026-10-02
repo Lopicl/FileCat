@@ -22,7 +22,7 @@ final class ServiceDiscovery {
                 let scheme = usesTLS ? "https" : "http"
                 let defaultPort = usesTLS ? 443 : 80
                 source.host = "\(scheme)://\(host)\(port.map { $0 == defaultPort ? "" : ":\($0)" } ?? "")/"
-            case .smb, .nfs:
+            case .smb, .nfs, .sftp, .ftp:
                 if let port, port != kind.defaultPort { source.port = port }
             }
             return source
@@ -77,6 +77,8 @@ final class ServiceDiscovery {
         ("_nfs._tcp", .nfs, false),
         ("_webdav._tcp", .webdav, false),
         ("_webdavs._tcp", .webdav, true),
+        ("_sftp-ssh._tcp", .sftp, false),
+        ("_ftp._tcp", .ftp, false),
     ]
 
     func start() {

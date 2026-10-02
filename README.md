@@ -1,6 +1,6 @@
 # FileCat: a file manager for iPhone and iPad
 
-A native SwiftUI file manager with built-in viewers for photos, videos, PDFs, music, text/Markdown and archives, a text editor, and native clients for SMB, NFS, WebDAV and Nextcloud.
+A native SwiftUI file manager with built-in viewers for photos, videos, PDFs, music, text/Markdown and archives, a text editor, and native clients for SMB, NFS, WebDAV, Nextcloud, SFTP and FTP.
 It has no third-party dependencies: the network protocols are implemented in Swift on top of Apple frameworks (Network, CryptoKit, CommonCrypto), and archives use libarchive, which is part of iOS.
 
 ## Features
@@ -28,7 +28,9 @@ It has no third-party dependencies: the network protocols are implemented in Swi
 - **NFS** version 3 over TCP, with the portmapper or a fixed port. *Browse* lists exports. The server must allow unprivileged ports (the `insecure` export option).
 - **WebDAV** over HTTP or HTTPS, with Basic/Digest sign-in and the option to trust a self-signed certificate
 - **Nextcloud**: *Sign In with Nextcloud* opens your server's sign-in page and gets an app password (Login Flow v2), or enter one yourself
-- Nearby SMB, NFS and WebDAV servers are found automatically (Bonjour)
+- **SFTP** (SSH 2 with Curve25519/ECDH key exchange, AES-GCM or AES-CTR, Ed25519/ECDSA/RSA host keys): sign in with a password, or with FileCat's own Ed25519 key (*Copy FileCat's Public Key* in the server editor, then add it to `~/.ssh/authorized_keys`). The first connection shows the server's key fingerprint to trust, as `ssh` does, and a changed key is reported. The folder is optional (home folder by default).
+- **FTP**, encrypted with TLS whenever the server offers it (explicit AUTH TLS, or implicit with an `ftps://` address or port 990), with the option to trust a self-signed certificate; anonymous sign-in when the user name is empty. Servers that insist on TLS session reuse for transfers (vsftpd's `require_ssl_reuse`, FileZilla Server's default) can't work, because iOS doesn't let apps resume a TLS session on another connection; FileCat says so.
+- Nearby SMB, NFS, WebDAV, SFTP and FTP servers are found automatically (Bonjour)
 - Files on servers download when you open them, with progress. Photos and videos swipe through the whole server folder, and music plays the folder as a queue, each fetched as needed.
 - **Streaming**: videos and music start playing straight away while they download (Settings › *Stream Videos and Music*, on by default). Playback reads from the download as it arrives and jumps ahead with ranged reads when you seek; the finished download lands in the cache as usual. Leaving a video stops its download.
 - **Keep Offline** for a file, a folder or a whole server: it stays on the device and is brought up to date when it changes on the server (on launch and when you pull to refresh the Connections tab). *Remove Download* frees the space again.
@@ -72,7 +74,7 @@ FileCat's storage is ready to be shared with other apps you build, such as a ded
 - `FileCatLibrary` gives a companion app lasting access to FileCat's Local Storage. The app shows a folder picker once, the user picks *On My iPhone › FileCat*, and the access is remembered with a security-scoped bookmark.
 - `files(ofKinds:)` lists the library's music, videos, photos…, with each file's tags.
 - `LibraryManifest` is `.FileCat/library.json` in Local Storage. FileCat keeps it up to date with a library ID, every tag's color and icon, the names of the folders added in Connections (access to those stays with FileCat, so a companion app asks for the same folders once), and every server's settings without its password (`SharedServer`).
-- `ServerShareRequest` / `ServerShareReply` hand FileCat's servers, passwords included, to a companion app: the app opens `filecat://share-servers?reply=<its scheme>`, FileCat asks the user, then opens `<scheme>://filecat-servers?…`. FileCat only answers the companion apps it knows. After that the app follows the manifest: changed servers change, removed ones go, and a new password (`passwordChanged`) means asking again. FileCat's protocol code in `FileCat/FileCat/Network` (SMB, NFS, WebDAV, streaming) compiles into companion apps as it is.
+- `ServerShareRequest` / `ServerShareReply` hand FileCat's servers, passwords included, to a companion app: the app opens `filecat://share-servers?reply=<its scheme>`, FileCat asks the user, then opens `<scheme>://filecat-servers?…`. FileCat only answers the companion apps it knows. After that the app follows the manifest: changed servers change, removed ones go, and a new password (`passwordChanged`) means asking again. FileCat's protocol code in `FileCat/FileCat/Network` (SMB, NFS, WebDAV, SFTP, FTP, streaming) compiles into companion apps as it is.
 - `FileActivityAttributes` describes FileCat's Live Activity, shared with the widget extension.
 - `FileKind`, `FileTags`, `FileTag` are shared with FileCat, so files are classified and tagged identically.
 - `FileCatLink` builds `filecat://open?path=…` and `filecat://reveal?path=…` links that open FileCat at a file ("Show in FileCat").
@@ -108,13 +110,13 @@ To build MusiCat as well, clone it inside this checkout: `git clone https://gith
 Any `.swift` file you add under `FileCat/FileCat/` is picked up automatically, so you don't need to edit the project file. Raise the build number (`CURRENT_PROJECT_VERSION`) with every build you hand out.
 
 ## Tests
-- **UI tests** (`FileCatUITests`) drive the app on a simulator: file management, search, every viewer, the gallery, the music and mini player, the equalizer, tags, settings (including reset and clear cache), `filecat://` links and iCloud placeholders. `NetworkUITests` covers WebDAV, Nextcloud sign-in, SMB (share browsing) and NFS against local test servers, and skips itself when they aren't running. It also imports a server into MusiCat and plays a song from it (install MusiCat on the simulator first, or that test skips). Each run starts from a fresh set of sample files.
-- **Protocol tests** (`Tools/protocol-tests`) build the network code for macOS and exercise listing, ranged reads, downloads, uploads, rename, folders and recursive delete against real servers. `run.sh stream` checks streaming: ranged reads during a download, a video through AVFoundation's resource loader (needs a movie at `/tmp/filecat-test-server/Videos/clip.mp4`), and M4A/FLAC/WAV decoding with seeking.
+- **UI tests** (`FileCatUITests`) drive the app on a simulator: file management, search, every viewer, the gallery, the music and mini player, the equalizer, tags, settings (including reset and clear cache), `filecat://` links and iCloud placeholders. `NetworkUITests` covers WebDAV, Nextcloud sign-in, SMB (share browsing), NFS, SFTP (trusting the server key) and FTPS (trusting a certificate) against local test servers, and skips itself when they aren't running. It also imports a server into MusiCat and plays a song from it (install MusiCat on the simulator first, or that test skips). Each run starts from a fresh set of sample files.
+- **Protocol tests** (`Tools/protocol-tests`) build the network code for macOS and exercise listing, ranged reads, downloads, uploads, rename, folders and recursive delete against real servers: SFTP against rclone and three OpenSSH `sshd`s with different algorithms (one renewing its keys every megabyte), FTP against rclone and `ftp_server.py` (explicit FTPS, LIST-only, and a server that requires TLS session reuse). `run.sh stream` checks streaming: ranged reads during a download, a video through AVFoundation's resource loader (needs a movie at `/tmp/filecat-test-server/Videos/clip.mp4`), and M4A/FLAC/WAV decoding with seeking.
 - **FileCatKit tests**: `cd Packages/FileCatKit && swift test`.
 
 ```
 brew install rclone samba                 # once
-Tools/protocol-tests/servers.sh           # local WebDAV, Nextcloud mock, NFS and SMB 3.1.1 servers
+Tools/protocol-tests/servers.sh           # local WebDAV, Nextcloud mock, NFS, SMB 3.1.1, SFTP, FTP and FTPS servers
 Tools/protocol-tests/run.sh               # protocol tests
 xcodebuild test -project FileCat/FileCat.xcodeproj -scheme FileCat -destination 'platform=iOS Simulator,name=iPhone 17'
 Tools/protocol-tests/servers.sh stop
@@ -136,7 +138,8 @@ FileCat/                        The FileCat app
                 thumbnails, move/copy picker, info sheet, tag views
     Network/    NetworkView (Connections tab), server editor, remote browser, download cache and
                 offline sync, streaming (RemoteStream), WebDAV, SMB2/3 (client, NTLM/SPNEGO,
-                signing), NFSv3 (ONC RPC), Nextcloud login, Bonjour discovery
+                signing), NFSv3 (ONC RPC), SSH 2 + SFTP v3, FTP/FTPS, Nextcloud login,
+                Bonjour discovery
     Archive/    libarchive wrapper (list, extract, compress), archive browser, bridging header
     Activities/ Activity center (progress, history, Live Activity, background time) and its list
     Viewers/    Photo & video gallery, PDF, text, text editor, Markdown (parser + renderer), Quick Look
@@ -157,7 +160,7 @@ Tools/protocol-tests/           Local test servers and the protocol test harness
 ```
 
 ## Ideas for later
-- SMB 3 encryption (for shares that require it), SFTP and FTP
+- SMB 3 encryption (for shares that require it)
 - A File Provider extension, so servers also appear in the Files app
 - A trash, drag and drop between windows on iPad
 - Creating RAR archives (libarchive only reads them)
