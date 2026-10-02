@@ -2,7 +2,7 @@
 <defs>
 <mask id="cat" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
 <rect width="1024" height="1024" fill="#FFFFFF"/>
-<g transform="translate(102,-101)" fill="#000000" stroke="#000000" stroke-width="16" stroke-linejoin="round">
+<g transform="translate(102,-77)" fill="#000000" stroke="#000000" stroke-width="16" stroke-linejoin="round">
 <ellipse cx="410" cy="682" rx="124" ry="100"/>
 <polygon points="290,690 300,522 392,592"/>
 <polygon points="428,592 520,522 530,690"/>
