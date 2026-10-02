@@ -1,0 +1,71 @@
+{
+  "fill": {
+    "linear-gradient": [
+      "srgb:0.47843,0.42353,1.00000,1.00000",
+      "srgb:0.14118,0.10196,0.54902,1.00000"
+    ]
+  },
+  "groups": [
+    {
+      "name": "Glyph",
+      "layers": [
+        {
+          "name": "Glyph",
+          "image-name": "Glyph.svg",
+          "glass": true,
+          "fill-specializations": [
+            {
+              "value": {
+                "linear-gradient": [
+                  "srgb:1.00000,1.00000,1.00000,0.80000",
+                  "srgb:0.89412,0.87059,1.00000,0.40000"
+                ]
+              }
+            },
+            {
+              "appearance": "dark",
+              "value": {
+                "linear-gradient": [
+                  "srgb:0.72157,0.68235,1.00000,1.00000",
+                  "srgb:0.29020,0.23137,0.87843,1.00000"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "shadow": {
+        "kind": "layer-color",
+        "opacity": 0.5
+      },
+      "specular": true,
+      "translucency": {
+        "enabled": true,
+        "value": 0.4
+      }
+    },
+    {
+      "name": "Glow",
+      "layers": [
+        {
+          "name": "Glow",
+          "image-name": "Glow.svg",
+          "glass": false
+        }
+      ],
+      "hidden-specializations": [
+        {
+          "appearance": "dark",
+          "value": true
+        },
+        {
+          "appearance": "tinted",
+          "value": true
+        }
+      ]
+    }
+  ],
+  "supported-platforms": {
+    "squares": "shared"
+  }
+}

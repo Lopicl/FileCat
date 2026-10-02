@@ -1,0 +1,65 @@
+<svg viewBox="0 0 1024 1024" width="1024" height="1024" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Liquid glass music note with a cat head silhouette cut into the note head">
+<defs>
+<linearGradient id="bgGrad" x1="0.3" y1="0" x2="0.7" y2="1">
+<stop offset="0" style="stop-color: #FF7A6B"></stop>
+<stop offset="1" style="stop-color: #7B1FA2"></stop>
+</linearGradient>
+<radialGradient id="warmGlow" cx="0.5" cy="0.5" r="0.5">
+<stop offset="0" style="stop-color: #FFC24D; stop-opacity: 0.85"></stop>
+<stop offset="1" style="stop-color: #FFC24D; stop-opacity: 0"></stop>
+</radialGradient>
+<radialGradient id="coolGlow" cx="0.5" cy="0.5" r="0.5">
+<stop offset="0" style="stop-color: #FF4FA3; stop-opacity: 0.7"></stop>
+<stop offset="1" style="stop-color: #FF4FA3; stop-opacity: 0"></stop>
+</radialGradient>
+<linearGradient id="glassFill" x1="0.1" y1="0" x2="0.8" y2="1">
+<stop offset="0" style="stop-color: #FFFFFF; stop-opacity: 0.78"></stop>
+<stop offset="0.55" style="stop-color: #FFFFFF; stop-opacity: 0.36"></stop>
+<stop offset="1" style="stop-color: #FFE3F1; stop-opacity: 0.22"></stop>
+</linearGradient>
+<mask id="glyphMask" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
+<g transform="translate(5,-20)">
+<g style="fill: #FFFFFF">
+<rect x="571" y="190" width="64" height="460"></rect>
+<path d="M571 190 L635 190 C640 320 760 360 810 500 C830 560 815 620 775 665 C780 580 730 520 635 480 L571 480 Z"></path>
+<circle cx="410" cy="650" r="225"></circle>
+</g>
+<g style="fill: #000000; stroke: #000000; stroke-width: 16; stroke-linejoin: round">
+<ellipse cx="410" cy="682" rx="124" ry="100"></ellipse>
+<polygon points="290,690 300,522 392,592"></polygon>
+<polygon points="428,592 520,522 530,690"></polygon>
+</g>
+</g>
+</mask>
+<filter id="glassFx" filterUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024" color-interpolation-filters="sRGB">
+<feGaussianBlur in="SourceAlpha" stdDeviation="26" result="shBlur"></feGaussianBlur>
+<feOffset in="shBlur" dx="0" dy="30" result="shOff"></feOffset>
+<feFlood flood-color="#2E0A3F" flood-opacity="0.5" result="shColor"></feFlood>
+<feComposite in="shColor" in2="shOff" operator="in" result="shadow"></feComposite>
+<feComponentTransfer in="SourceAlpha" result="inv">
+<feFuncA type="table" tableValues="1 0"></feFuncA>
+</feComponentTransfer>
+<feOffset in="inv" dx="7" dy="11" result="invA"></feOffset>
+<feGaussianBlur in="invA" stdDeviation="5" result="invABlur"></feGaussianBlur>
+<feComposite in="invABlur" in2="SourceAlpha" operator="in" result="edgeA"></feComposite>
+<feFlood flood-color="#FFFFFF" flood-opacity="0.95" result="hiColor"></feFlood>
+<feComposite in="hiColor" in2="edgeA" operator="in" result="highlight"></feComposite>
+<feOffset in="inv" dx="-6" dy="-9" result="invB"></feOffset>
+<feGaussianBlur in="invB" stdDeviation="7" result="invBBlur"></feGaussianBlur>
+<feComposite in="invBBlur" in2="SourceAlpha" operator="in" result="edgeB"></feComposite>
+<feFlood flood-color="#FFD0E6" flood-opacity="0.7" result="rimColor"></feFlood>
+<feComposite in="rimColor" in2="edgeB" operator="in" result="rim"></feComposite>
+<feMerge>
+<feMergeNode in="shadow"></feMergeNode>
+<feMergeNode in="SourceGraphic"></feMergeNode>
+<feMergeNode in="rim"></feMergeNode>
+<feMergeNode in="highlight"></feMergeNode>
+</feMerge>
+</filter>
+</defs>
+<rect width="1024" height="1024" fill="url(#bgGrad)"></rect>
+<circle cx="820" cy="190" r="400" fill="url(#coolGlow)"></circle>
+<g filter="url(#glassFx)">
+<rect width="1024" height="1024" fill="url(#glassFill)" mask="url(#glyphMask)"></rect>
+</g>
+</svg>

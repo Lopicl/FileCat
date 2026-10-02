@@ -154,8 +154,9 @@ MusiCat/                        MusiCat, the companion music player: its own rep
                                 cloned here and ignored by this one. Compiles FileCat's protocol files from
                                 FileCat/FileCat/Network (group "FileCat Network")
 Packages/FileCatKit/            Shared library for FileCat and companion apps (+ tests)
-Tools/make-app-icon.swift       Draws FileCat's icon: xcrun swift Tools/make-app-icon.swift FileCat/FileCat/Assets.xcassets/AppIcon.appiconset/AppIcon.png
-Tools/make-musicat-icon.swift   Draws MusiCat's icon: a vinyl record with a cat-shaped hole
+Tools/icons/                    Flat icon artwork (SVG) and render.mjs, which renders it to PNG for the AltStore source.
+                                The app icons themselves are Icon Composer files (FileCat/FileCat/AppIcon.icon,
+                                MusiCat/MusiCat/AppIcon.icon) with light, dark, clear and tinted looks
 Tools/protocol-tests/           Local test servers and the protocol test harness
 ```
 

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+<defs>
+<mask id="cat" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
+<rect width="1024" height="1024" fill="#FFFFFF"/>
+<g transform="translate(102,-101)" fill="#000000" stroke="#000000" stroke-width="16" stroke-linejoin="round">
+<ellipse cx="410" cy="682" rx="124" ry="100"/>
+<polygon points="290,690 300,522 392,592"/>
+<polygon points="428,592 520,522 530,690"/>
+</g>
+</mask>
+</defs>
+<path mask="url(#cat)" fill="#FFFFFF" transform="translate(0,-28)" d="M232 280 H380 C410 280 428 296 442 316 C456 336 470 358 506 358 H792 A60 60 0 0 1 852 418 V740 A60 60 0 0 1 792 800 H232 A60 60 0 0 1 172 740 V340 A60 60 0 0 1 232 280 Z"/>
+</svg>

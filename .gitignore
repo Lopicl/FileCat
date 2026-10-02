@@ -14,3 +14,6 @@ build/
 
 # Scratch media for analysis
 /Analyze/
+
+# Icon renderer dependencies
+node_modules/
