@@ -1,4 +1,5 @@
 import AVFoundation
+import FileCatKit
 import SwiftUI
 
 @main
@@ -26,6 +27,7 @@ struct FileCatApp: App {
         let sources = SourceStore()
         _sources = State(initialValue: sources)
         _transfers = State(initialValue: TransferCenter(sources: sources))
+        SharedStorageCheck.record(app: "FileCat")
     }
 
     var body: some Scene {

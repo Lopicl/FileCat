@@ -162,6 +162,43 @@ final class NetworkUITests: XCTestCase {
 
     /// MusiCat asks for FileCat's servers, FileCat asks the user, and MusiCat then plays music
     /// from the server. Needs MusiCat installed on the simulator.
+    /// FileCat and MusiCat share an App Group: each records itself there at launch and reads what
+    /// the other left in the shared defaults, container and keychain.
+    func testSharedStorageReachesMusiCat() throws {
+        let musiCat = XCUIApplication(bundleIdentifier: "com.lopicl.MusiCat")
+        musiCat.launch()
+        guard musiCat.wait(for: .runningForeground, timeout: 10) else {
+            throw XCTSkip("MusiCat isn't installed on this simulator.")
+        }
+        musiCat.tabBars.buttons["Settings"].tap()
+        let group = musiCat.descendants(matching: .any)["sharedStorageGroup"].firstMatch
+        XCTAssertTrue(group.waitForExistence(timeout: 5))
+        XCTAssertTrue(text(of: group).contains("group.com.lopicl.FileCat"), "MusiCat has the App Group: \(text(of: group))")
+        for row in ["sharedStorageSharedFolder", "sharedStorageSharedKeychain"] {
+            let element = musiCat.descendants(matching: .any)[row].firstMatch
+            XCTAssertTrue(text(of: element).contains("Works"), "MusiCat reads FileCat's \(row): \(text(of: element))")
+        }
+        musiCat.terminate()
+
+        app.activate()
+        openTab("settings")
+        let companion = app.buttons["Companion Apps"]
+        for _ in 0..<6 where !companion.isHittable { app.swipeUp() }
+        companion.tap()
+        let seen = app.descendants(matching: .any)["sharedStorageSeen"].firstMatch
+        for _ in 0..<4 where !seen.exists { app.swipeUp() }
+        XCTAssertTrue(seen.waitForExistence(timeout: 5))
+        XCTAssertTrue(text(of: seen).contains("0.1"), "FileCat sees MusiCat: \(text(of: seen))")
+        for row in ["sharedStorageSharedFolder", "sharedStorageSharedKeychain"] {
+            let element = app.descendants(matching: .any)[row].firstMatch
+            XCTAssertTrue(text(of: element).contains("Works"), "FileCat reads MusiCat's \(row): \(text(of: element))")
+        }
+    }
+
+    private func text(of element: XCUIElement) -> String {
+        "\(element.label) \(element.value as? String ?? "")"
+    }
+
     func testMusiCatImportsServersAndPlaysFromThem() throws {
         try requireServer(port: 8081)
         addServer("WebDAV", host: "http://127.0.0.1:8081/", user: "test", password: "secret")
@@ -359,7 +396,7 @@ final class NetworkUITests: XCTestCase {
     }
 
     private func openTab(_ id: String) {
-        let labels = ["local": "Local Storage", "network": "Connections"]
+        let labels = ["local": "Local Storage", "network": "Connections", "settings": "Settings"]
         var tab = app.buttons["tab-" + id].firstMatch
         if !tab.exists { tab = app.tabBars.buttons[labels[id] ?? id].firstMatch }
         if !tab.exists { tab = app.buttons[labels[id] ?? id].firstMatch }

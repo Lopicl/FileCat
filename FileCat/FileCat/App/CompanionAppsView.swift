@@ -74,6 +74,14 @@ struct CompanionAppsView: View {
             } footer: {
                 Text("Apps can send you back here with filecat:// links, for example “Show in FileCat” from a music player. MusiCat can also import your servers: it asks here first, then follows your changes to them.")
             }
+
+            Section {
+                SharedStorageRows(otherApp: "MusiCat")
+            } header: {
+                Text("Shared Storage")
+            } footer: {
+                Text("A test of storage shared with MusiCat. Open MusiCat once, then come back here.")
+            }
         }
         .alert(notice ?? "", isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })) {
             Button("OK") {}
