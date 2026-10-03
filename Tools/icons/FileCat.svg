@@ -1,8 +1,8 @@
 <svg viewBox="0 0 1024 1024" width="1024" height="1024" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Liquid glass folder with a cat head silhouette cut into it">
 <defs>
 <linearGradient id="bgGrad" x1="0.3" y1="0" x2="0.7" y2="1">
-<stop offset="0" style="stop-color: #7A6CFF"></stop>
-<stop offset="1" style="stop-color: #241A8C"></stop>
+<stop offset="0" style="stop-color: #9C90FF"></stop>
+<stop offset="1" style="stop-color: #4A3DD6"></stop>
 </linearGradient>
 <radialGradient id="warmGlow" cx="0.5" cy="0.5" r="0.5">
 <stop offset="0" style="stop-color: #FF8A5C; stop-opacity: 0.85"></stop>
